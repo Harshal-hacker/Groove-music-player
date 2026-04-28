@@ -9,6 +9,7 @@ function Admin({ onBack }) {
   const [coverFile, setCoverFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [editingSongId, setEditingSongId] = useState(null);
 
   // --- Management State ---
   const [existingSongs, setExistingSongs] = useState([]);
@@ -86,37 +87,74 @@ function Admin({ onBack }) {
     }
   };
 
+  const handleEditClick = (song) => {
+    // 1. Set the ID so the form knows we are in "Edit Mode"
+    setEditingSongId(song._id);
+    
+    // 2. Correctly update the songData object state
+    setSongData({ 
+      title: song.title, 
+      artist: song.artist, 
+      duration: song.duration || 0 
+    });
+    
+    // 3. Show the existing cover in the preview box
+    setPreview(song.cover);
+    
+    // 4. Scroll the form panel to the top so you can see the data
+    const formPanel = document.querySelector('.bento-scrollbar');
+    if (formPanel) formPanel.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsUploading(true);
 
-    const userId = localStorage.getItem('userId');
     const formData = new FormData();
-
     formData.append('title', songData.title);
     formData.append('artist', songData.artist);
-    formData.append('audio', audioFile);
-    formData.append('cover', coverFile);
-    formData.append('userId', userId);
-    formData.append('duration', songData.duration || 0);
+    formData.append('userId', localStorage.getItem('userId'));
+    
+    // Only append files if you actually picked NEW ones
+    if (audioFile) formData.append('audio', audioFile);
+    if (coverFile) formData.append('cover', coverFile);
+
+    const url = editingSongId 
+      ? `${API_BASE_URL}/api/songs/${editingSongId}` 
+      : `${API_BASE_URL}/api/songs/upload`;
+
+    const method = editingSongId ? 'PATCH' : 'POST';
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/songs/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetch(url, { method: method, body: formData });
+      
+      if (res.ok) {
+        const result = await res.json();
+        
+        if (editingSongId) {
+          // Update the song in your "Manage Library" list instantly
+          setExistingSongs(prev => prev.map(s => s._id === editingSongId ? result : s));
+          alert("Song updated successfully!");
+        } else {
+          setExistingSongs(prev => [result, ...prev]);
+          alert("Song uploaded successfully!");
+        }
 
-      if (response.ok) {
-        const newSong = await response.json();
-        setExistingSongs([newSong, ...existingSongs]);
-        setSongData({ title: '', artist: '' });
+        // RESET EVERYTHING TO DEFAULT
+        setEditingSongId(null);
+        setSongData({ title: '', artist: '', duration: 0 });
+        setPreview(null);
         setAudioFile(null);
         setCoverFile(null);
-        setPreview(null);
-        alert("🎉 Published to Global Library");
+      } else {
+        const errorData = await res.json();
+        alert(`Error: ${errorData.message}`);
       }
-    } catch (err) { console.error(err); } 
-    finally { setIsUploading(false); }
+    } catch (err) {
+      console.error("Submit Error:", err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -140,10 +178,45 @@ function Admin({ onBack }) {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         
         {/* LEFT: UPLOAD FORM (Fixed Width) */}
-        <div style={{ width: '400px', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '40px', overflowY: 'auto' }} className="bento-scrollbar">
-          <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <UploadCloud size={20} color="#10b981" /> New Release
-          </h2>
+        <div style={{ width: '400px', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '40px', overflowY: 'auto' }} className="bento-scrollbar"> 
+          
+          {/* Wrap title and button in this flex div */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <UploadCloud size={20} color="#10b981" /> 
+              {editingSongId ? "Edit Release" : "New Release"}
+            </h2>
+
+            {editingSongId && (
+              <button 
+                className="ultra-action-circle" 
+                onClick={() => { 
+                  setEditingSongId(null); 
+                  setSongData({title:'', artist:'', duration: 0}); 
+                  setPreview(null); 
+                  setAudioFile(null); 
+                  setCoverFile(null); 
+                }}
+                style={{ 
+                  width: '35px',
+                  height: '35px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              >
+                <ArrowLeft size={18} color="#64748b" /> 
+              </button>
+            )}
+          </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Visual Dropzone */}
@@ -200,15 +273,15 @@ function Admin({ onBack }) {
             </div>
 
             <button 
-              type="submit" disabled={isUploading || !audioFile || !coverFile}
+              type="submit" disabled={isUploading || (!editingSongId && (!audioFile || !coverFile))}
               style={{
                 marginTop: '10px', padding: '18px', borderRadius: '50px', background: '#10b981',
                 color: '#000', border: 'none', fontWeight: '900', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                opacity: (isUploading || !audioFile || !coverFile) ? 0.5 : 1, transition: '0.3s'
+                opacity: (isUploading ||(!editingSongId && (!audioFile || !coverFile))) ? 0.5 : 1, transition: '0.3s'
               }}
             >
-              {isUploading ? <><Loader2 className="spinner" size={18} /> UPLOADING...</> : 'PUSH TO LIBRARY'}
+              {isUploading ? "PROCESSING..." : editingSongId ? "SAVE CHANGES" : "PUSH TO LIBRARY"}
             </button>
           </form>
         </div>
@@ -238,7 +311,7 @@ function Admin({ onBack }) {
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{song.artist}</p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button className="mgmt-btn" style={{ color: '#64748b' }}><Edit3 size={16} /></button>
+                  <button className="mgmt-btn" onClick={() => handleEditClick(song)} style={{ color: '#64748b' }}><Edit3 size={16} /></button>
                   <button onClick={() => handleDelete(song._id)} className="mgmt-btn" style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                 </div>
               </div>
