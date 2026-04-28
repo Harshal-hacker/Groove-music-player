@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://your-groove-frontend.vercel.app/sitemap.xml
