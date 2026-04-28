@@ -206,6 +206,48 @@ app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' 
   }
 });
 
+// Route to update song duration
+app.patch('/api/songs/:id/duration', async (req, res) => {
+  try {
+    const { duration } = req.body;
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id,
+      { duration: duration },
+      { new: true }
+    );
+    res.json(updatedSong);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REPLACE your old update routes with this:
+app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
+  try {
+    const { title, artist } = req.body;
+    let updateData = { title, artist };
+
+    // If you uploaded a NEW photo or NEW audio while editing, update the links
+    if (req.files) {
+      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
+      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
+    }
+
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id, 
+      updateData, 
+      { returnDocument: 'after' } // This is the modern version of { new: true }
+    );
+
+    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
+    
+    res.status(200).json(updatedSong);
+  } catch (error) {
+    console.error("The REAL database error is:", error);
+    res.status(500).json({ message: "Server error during update", error: error.message });
+  }
+});
+
 // DELETE a song by its ID
 app.delete('/api/songs/:id', async (req, res) => {
   try {
@@ -280,48 +322,6 @@ app.delete('/api/playlists/:id', async (req, res) => {
     res.status(200).json({ message: "Deleted" });
   } catch (error) {
     res.status(500).json({ error: error.message });
-  }
-});
-
-// Route to update song duration
-app.patch('/api/songs/:id/duration', async (req, res) => {
-  try {
-    const { duration } = req.body;
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id,
-      { duration: duration },
-      { new: true }
-    );
-    res.json(updatedSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// REPLACE your old update routes with this:
-app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
-  try {
-    const { title, artist } = req.body;
-    let updateData = { title, artist };
-
-    // If you uploaded a NEW photo or NEW audio while editing, update the links
-    if (req.files) {
-      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
-      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
-    }
-
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id, 
-      updateData, 
-      { returnDocument: 'after' } // This is the modern version of { new: true }
-    );
-
-    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
-    
-    res.status(200).json(updatedSong);
-  } catch (error) {
-    console.error("The REAL database error is:", error);
-    res.status(500).json({ message: "Server error during update", error: error.message });
   }
 });
 
