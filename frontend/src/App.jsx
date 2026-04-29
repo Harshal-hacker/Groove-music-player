@@ -44,6 +44,9 @@ function App() {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
   const currentTrack = playlist.length > 0 ? playlist[currentTrackIndex] : null;
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
+  
 
   // --- Data Fetching Effect ---
   // App.jsx
@@ -361,17 +364,17 @@ function App() {
     setView('player');
   };
 
-  const handleConfirmCreatePlaylist = async () => {
-    const userId = localStorage.getItem('userId'); // Get the logged-in user's ID
-    if (!newPlaylistName || !userId) return;
+  const handleCreatePlaylistInline = async () => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) return;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          name: newPlaylistName, 
-          createdBy: userId, // Links the playlist to the actual user
+          name: "New Playlist", // Default placeholder name
+          createdBy: userId, 
           songIds: [] 
         })
       });
@@ -379,11 +382,18 @@ function App() {
       if (response.ok) {
         const newPlaylist = await response.json();
         setUserPlaylists(prev => [...prev, newPlaylist]);
-        setIsPlaylistModalOpen(false); // Close modal
-        setNewPlaylistName(''); // Reset input
+        
+        // Immediately switch view to the new playlist and trigger edit mode
+        setSelectedPlaylist(newPlaylist._id);
+        setActiveCategory('All');
+        setTempName("New Playlist");
+        setIsEditingName(true);
+        
+        // Close the old modal if it was open
+        setIsPlaylistModalOpen(false); 
       }
     } catch (err) {
-      console.error(err);
+      console.error("Create failed:", err);
     }
   };
 
@@ -543,6 +553,33 @@ function App() {
     }
   };
 
+  const handleInlineRename = async () => {
+    const playlistId = selectedPlaylist;
+    if (!tempName || tempName.trim() === "" || tempName === userPlaylists.find(pl => pl._id === playlistId)?.name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/rename`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: tempName })
+      });
+
+      if (response.ok) {
+        const updatedPlaylist = await response.json();
+        setUserPlaylists(prev => prev.map(pl => 
+          pl._id === playlistId ? updatedPlaylist : pl
+        ));
+      }
+    } catch (error) {
+      console.error("Rename failed:", error);
+    } finally {
+      setIsEditingName(false);
+    }
+  };
+
   // Function to show the menu
   const handleContextMenu = (e, id, type = 'song') => {
     e.preventDefault();
@@ -623,6 +660,29 @@ function App() {
     // If you select a specific playlist from the sidebar
     return activeCategory === song.category; 
   });
+
+  const handleRemoveFromPlaylist = async (songId, playlistId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId })
+      });
+
+      if (response.ok) {
+        const updatedPlaylist = await response.json();
+        
+        // Update the playlists state so the UI reflects the removal immediately
+        setUserPlaylists(prev => prev.map(pl => 
+          pl._id === playlistId ? updatedPlaylist : pl
+        ));
+        
+        setContextMenu(null); // Close the context menu
+      }
+    } catch (error) {
+      console.error("Failed to remove song:", error);
+    }
+  };
 
   // --- The Smart Filter ---
   const filteredPlaylist = playlist.filter((song) => {
@@ -911,7 +971,7 @@ function App() {
               {/* PLUS BUTTON: Only for authenticated users */}
               {isAuthenticated && (
                 <button 
-                  onClick={() => setIsPlaylistModalOpen(true)}
+                  onClick={handleCreatePlaylistInline}
                   style={{
                     background: 'rgba(255,255,255,0.05)',
                     border: 'none',
@@ -1043,6 +1103,7 @@ function App() {
               paddingBottom: '40px'
             }}>
               {filteredPlaylist.map((track) => {
+                const displayCover = track.cover || "/Groove.png";
                 const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
                 
                 return (
@@ -1077,6 +1138,10 @@ function App() {
                       <img 
                         src={track.cover} 
                         alt={track.title} 
+                        onError={(e) => {
+                          e.target.onerror = null; // Prevents infinite loops
+                          e.target.src = "/Groove.png"; // Path to your GROOVE logo
+                        }}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} 
                         className="card-img"
                       />
@@ -1137,14 +1202,45 @@ function App() {
             <div className="groove-header-deck">
               <div className="deck-main-card">
                 <div className="deck-art-frame">
-                  <img src={filteredPlaylist[0]?.cover || "https://via.placeholder.com/200"} alt="Art" />
+                  <img 
+                    /* If the playlist is empty, it uses the logo immediately */
+                    src={filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png"} 
+                    alt="Playlist Art" 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "/Groove.png";
+                    }}
+                  />
                 </div>
                 <div className="deck-details">
                   <span className="deck-badge">DIGITAL COLLECTION</span>
-                  <h1 className="deck-title-text">
-                    {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
-                  </h1>
-                  
+                  {isEditingName ? (
+                    <input
+                      autoFocus
+                      className="deck-title-text inline-edit-input"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      onBlur={handleInlineRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleInlineRename();
+                        if (e.key === 'Escape') setIsEditingName(false);
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid #10b981',
+                        color: 'white',
+                        width: '50%',
+                        outline: 'none',
+                        borderRadius: '8px',
+                        padding: '0 10px'
+                      }}
+                    />
+                  ) : (
+                    <h1 className="deck-title-text">
+                      {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
+                    </h1>
+                  )}
+                
                   <div className="deck-info-row">
                     <div className="deck-stat"><span>{filteredPlaylist.length}</span> TRACKS</div>
                     <div className="deck-stat"><span>{Math.floor(filteredPlaylist.length * 3.5 / 60)}H</span> DURATION</div>
@@ -1179,9 +1275,6 @@ function App() {
                       )}
                     </button>
 
-                    <div className="groove-mini-frame">
-                      <img src={currentTrack?.cover || filteredPlaylist[0]?.cover} alt="" />
-                    </div>
                     <Shuffle size={24} className="groove-utility" color={isShuffle ? '#10b981' : '#444'} onClick={() => setIsShuffle(!isShuffle)} />
                     <PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />
                   </div>
@@ -1190,6 +1283,7 @@ function App() {
             </div>
             <div className="groove-tracklist">
               {filteredPlaylist.map((track, index) => {
+                const displayCover = track.cover || "/Groove.png";
                 const isActive = currentTrack?._id === track._id;
                 return (
                   <div 
@@ -1199,7 +1293,12 @@ function App() {
                     onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                   >
                     <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
-                    <img src={track.cover} className="track-thumb" alt="" />
+                    <img 
+                      src={displayCover} // USE THE VARIABLE HERE
+                      className="track-thumb" 
+                      alt="" 
+                      onError={(e) => { e.target.src = "/Groove.png"; }}
+                    />
                     <div className="track-meta">
                       <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
                       <div className="track-artist-sub">{track.artist}</div>
@@ -1302,7 +1401,12 @@ function App() {
           {/* --- 1. MINIMALIST TRACK INFO --- */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden' }}>
-              <img src={currentTrack?.cover || "https://via.placeholder.com/56"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+              <img 
+                src={currentTrack?.cover || "/Groove.png"} // INLINE CHECK HERE
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                alt="" 
+                onError={(e) => { e.target.src = "/Groove.png"; }}
+              />
               {isPlaying && <div className="playing-glow" style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 3px #10b981' }} />}
             </div>
             <div style={{ maxWidth: '180px' }}>
@@ -1408,7 +1512,12 @@ function App() {
             <div className="context-item" onClick={() => { /* Add to queue logic */ setContextMenu(null); }}>
               <div className="item-content"><ListMusic size={16} /> <span>Add to queue</span></div>
             </div>
-            <div className="context-item" onClick={() => { renamePlaylist(contextMenu.id); }}>
+            <div className="context-item" onClick={() => { 
+              const currentName = userPlaylists.find(pl => pl._id === contextMenu.id)?.name;
+              setTempName(currentName);
+              setIsEditingName(true); 
+              setContextMenu(null);
+            }}>
               <div className="item-content"><Settings size={16} /> <span>Edit details</span></div>
             </div>
 
@@ -1424,7 +1533,10 @@ function App() {
             <div className="context-divider" />
 
             {/* SECTION 3: CREATION */}
-            <div className="context-item" onClick={() => { setIsPlaylistModalOpen(true); setContextMenu(null); }}>
+            <div className="context-item" onClick={() => { 
+              handleCreatePlaylistInline();
+              setContextMenu(null); 
+            }}>
               <div className="item-content"><Plus size={16} /> <span>Create playlist</span></div>
             </div>
             <div className="context-item">
@@ -1523,7 +1635,6 @@ function App() {
                     <span>Remove from this playlist</span>
                   </div>
                 </div>
-                <div className="context-divider" />
               </>
             )}
 
@@ -1561,71 +1672,11 @@ function App() {
                 </>
               )}
             </>
-          ) : (
-            /* Playlist specific options */
-            <div className="context-item delete-text" onClick={() => deletePlaylist(contextMenu.id)}>
-              <div className="item-content"><Trash2 size={16} /> <span>Remove Playlist</span></div>
-            </div>
-          )}
+          ) : null }
         </div>
       )}
 
-      {/* --- CUSTOM ATTRACTIVE PLAYLIST MODAL --- */}
-      {isPlaylistModalOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)'
-        }}>
-          <div style={{
-            width: '400px', padding: '40px', borderRadius: '32px',
-            backgroundColor: '#161616', border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 25px 50px rgba(0,0,0,0.5)', textAlign: 'center',
-            animation: 'ultraFade 0.3s ease-out'
-          }}>
-            <div style={{ 
-              width: '60px', height: '60px', borderRadius: '20px', backgroundColor: 'rgba(16, 185, 129, 0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
-              color: '#10b981'
-            }}>
-              <Plus size={30} />
-            </div>
-            
-            <h2 style={{ fontSize: '24px', fontWeight: '900', margin: '0 0 10px' }}>Create Playlist</h2>
-            <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '30px' }}>Give your collection a name.</p>
 
-            <input 
-              autoFocus
-              type="text" 
-              placeholder="My Awesome Mix" 
-              value={newPlaylistName}
-              onChange={(e) => setNewPlaylistName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirmCreatePlaylist()}
-              style={{
-                width: '100%', padding: '16px 20px', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '16px', outline: 'none',
-                marginBottom: '25px', textAlign: 'center', transition: '0.3s'
-              }}
-              className="modal-input-glow"
-            />
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                onClick={() => { setIsPlaylistModalOpen(false); setNewPlaylistName(''); }}
-                style={{ flex: 1, padding: '14px', borderRadius: '50px', background: 'rgba(255,255,255,0.05)', color: 'white', border: 'none', fontWeight: '700', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleConfirmCreatePlaylist}
-                style={{ flex: 1, padding: '14px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', fontWeight: '900', cursor: 'pointer' }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       
     </div> // This is the closing tag for spotify-container
   )

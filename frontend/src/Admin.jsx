@@ -76,11 +76,17 @@ function Admin({ onBack }) {
 
       if (response.ok) {
         const updatedPlaylist = await response.json();
-        // Update local state to reflect the change immediately
+
+        // 1. Update the playlists state so the sidebar and "filteredPlaylist" update
         setUserPlaylists(prev => prev.map(pl => 
           pl._id === playlistId ? updatedPlaylist : pl
         ));
+
+        // 2. IMPORTANT: If the user is currently viewing this playlist, 
+        // we need to force a re-render by closing the menu
         setContextMenu(null);
+        
+        console.log("Song removed successfully from playlist");
       }
     } catch (error) {
       console.error("Failed to remove song:", error);
@@ -227,15 +233,49 @@ function Admin({ onBack }) {
             }}>
               {preview ? (
                 <>
-                  <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
+                  <img 
+                    /* Use the current track's cover or the logo if empty */
+                    src={preview || "/Groove.png"} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    alt="Preview" 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "/Groove.png";
+                    }}
+                  />
+                  {/*<img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />*/}
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }} onMouseOver={(e) => e.currentTarget.style.opacity=1} onMouseOut={(e) => e.currentTarget.style.opacity=0}>
                     <p style={{ fontWeight: '80x0', fontSize: '12px' }}>CHANGE COVER</p>
                   </div>
                 </>
               ) : (
-                <div style={{ textAlign: 'center', opacity: 0.4 }}>
-                  <ImageIcon size={40} style={{ marginBottom: '10px' }} />
-                  <p style={{ fontSize: '12px', fontWeight: '700' }}>DRAG COVER ART</p>
+                <div className="preview-box" style={{ 
+                  position: 'relative',
+                  width: '100%', 
+                  height: '200px', 
+                  border: '2px dashed rgba(255,255,255,0.1)', 
+                  borderRadius: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  background: 'rgba(255,255,255,0.02)'
+                }}>
+                  {preview ? (
+                    <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
+                  ) : (
+                    <div style={{ textAlign: 'center', opacity: 0.3 }}>
+                      {/* USE YOUR LOGO HERE INSTEAD OF THE ICON */}
+                      <img 
+                        src="/Groove.png" 
+                        style={{ width: '180px', marginBottom: '10px', filter: 'grayscale(1)' }} 
+                        alt="Groove Logo Placeholder" 
+                      />
+                      <p style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '2px', color: '#fff' }}>
+                        DRAG COVER ART
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               <input type="file" hidden accept="image/*" onChange={handleImageChange} />
@@ -305,7 +345,17 @@ function Admin({ onBack }) {
                 display: 'flex', alignItems: 'center', padding: '12px 20px', backgroundColor: 'rgba(255,255,255,0.02)',
                 borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', gap: '20px'
               }}>
-                <img src={song.cover} style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }} alt="" />
+                <img 
+                  /* Use the current track's cover or the logo if empty */
+                  src={song.cover || "/Groove.png"} 
+                  style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }}
+                  alt="" 
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "/Groove.png";
+                  }}
+                />
+                {/*<img src={song.cover} style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }} alt="" />*/}
                 <div style={{ flex: 1 }}>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>{song.title}</h4>
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{song.artist}</p>

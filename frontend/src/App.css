@@ -1313,8 +1313,94 @@ h1, h2, h3, h4 {
   50% { transform: scale(1.1); }
 }
 
+/* --- COMPACT GROOVE DECK STYLES --- */
+.groove-playlist-wrapper { 
+  animation: fadeIn 0.5s ease; 
+}
+
+.groove-header-deck { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 15px; 
+  margin-bottom: 25px; /* Reduced from 40px */
+}
+
+.deck-main-card { 
+  background: rgba(255,255,255,0.03); 
+  border-radius: 24px; /* Slightly smaller radius */
+  padding: 20px 30px; /* Much smaller padding */
+  display: flex; 
+  gap: 30px; 
+  align-items: center; 
+  border: 1px solid rgba(255,255,255,0.05); 
+}
+
+.deck-art-frame { 
+  width: 120px; /* Reduced from 180px */
+  height: 120px; /* Reduced from 180px */
+  border-radius: 16px; 
+  overflow: hidden; 
+  box-shadow: 0 10px 20px rgba(0,0,0,0.4); 
+}
+
+.deck-art-frame img { 
+  width: 100%; 
+  height: 100%; 
+  object-fit: cover; 
+}
+
+.deck-badge { 
+  font-size: 9px; 
+  font-weight: 900; 
+  color: #10b981; 
+  letter-spacing: 3px; 
+}
+
+.deck-title-text { 
+  font-size: 32px; /* Reduced from 56px */
+  font-weight: 900; 
+  margin: 5px 0; 
+  letter-spacing: -1px; 
+  line-height: 1.2; 
+}
+
+.deck-stat { 
+  font-size: 10px; 
+  font-weight: 800; 
+  color: #555; 
+}
+
+.deck-stat span { 
+  color: #fff; 
+  margin-right: 4px; 
+}
+
+/* Slimmed down Action Unit */
+.groove-action-unit { 
+  display: flex; 
+  align-items: center; 
+  gap: 20px; 
+  background: rgba(255,255,255,0.02); 
+  padding: 10px 20px; /* Reduced padding */
+  border-radius: 18px; 
+  width: fit-content; 
+  border: 1px solid rgba(255,255,255,0.05); 
+}
+
+.groove-play-btn { 
+  width: 44px; /* Reduced from 54px */
+  height: 44px; 
+  border-radius: 14px; 
+  background: #10b981; 
+  border: none; 
+  cursor: pointer; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+}
+
 /* --- GROOVE DECK STYLES --- */
-.groove-playlist-wrapper { animation: fadeIn 0.5s ease; }
+/*.groove-playlist-wrapper { animation: fadeIn 0.5s ease; }
 .groove-header-deck { display: flex; flex-direction: column; gap: 20px; margin-bottom: 40px; }
 .deck-main-card { background: rgba(255,255,255,0.03); border-radius: 32px; padding: 40px; display: flex; gap: 40px; align-items: center; border: 1px solid rgba(255,255,255,0.05); }
 .deck-art-frame { width: 180px; height: 180px; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
@@ -1325,7 +1411,7 @@ h1, h2, h3, h4 {
 .deck-stat span { color: #fff; margin-right: 4px; }
 
 .groove-action-unit { display: flex; align-items: center; gap: 25px; background: rgba(255,255,255,0.02); padding: 15px 30px; border-radius: 24px; width: fit-content; border: 1px solid rgba(255,255,255,0.05); }
-.groove-play-btn { width: 54px; height: 54px; border-radius: 18px; background: #10b981; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.groove-play-btn { width: 54px; height: 54px; border-radius: 18px; background: #10b981; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; } */
 .groove-mini-frame { width: 35px; height: 42px; border: 2px solid #222; border-radius: 8px; padding: 2px; }
 .groove-mini-frame img { width: 100%; height: 100%; border-radius: 4px; object-fit: cover; }
 .groove-utility { cursor: pointer; transition: 0.2s; }
@@ -1385,3 +1471,11 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
 }
 
+.inline-edit-input {
+  font-family: inherit;
+  font-size: 32px; /* Matches your compact deck title size */
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1.2;
+  margin: 5px 0;
+}

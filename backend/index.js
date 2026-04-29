@@ -356,9 +356,9 @@ app.patch('/api/playlists/:id/remove-song', async (req, res) => {
     const { songId } = req.body;
     const updatedPlaylist = await Playlist.findByIdAndUpdate(
       req.params.id,
-      { $pull: { songIds: songId } }, // $pull removes the ID from the array
-      { new: true }
-    ).populate('songIds');
+      { $pull: { songIds: songId } }, // Removes the specific ID
+      { returnDocument: 'after' }     // Returns the new list
+    ).populate('songIds');            // CRITICAL: Must populate to show tracks
     
     res.json(updatedPlaylist);
   } catch (err) {
