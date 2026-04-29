@@ -206,48 +206,6 @@ app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' 
   }
 });
 
-// Route to update song duration
-app.patch('/api/songs/:id/duration', async (req, res) => {
-  try {
-    const { duration } = req.body;
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id,
-      { duration: duration },
-      { new: true }
-    );
-    res.json(updatedSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// REPLACE your old update routes with this:
-app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
-  try {
-    const { title, artist } = req.body;
-    let updateData = { title, artist };
-
-    // If you uploaded a NEW photo or NEW audio while editing, update the links
-    if (req.files) {
-      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
-      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
-    }
-
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id, 
-      updateData, 
-      { returnDocument: 'after' } // This is the modern version of { new: true }
-    );
-
-    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
-    
-    res.status(200).json(updatedSong);
-  } catch (error) {
-    console.error("The REAL database error is:", error);
-    res.status(500).json({ message: "Server error during update", error: error.message });
-  }
-});
-
 // DELETE a song by its ID
 app.delete('/api/songs/:id', async (req, res) => {
   try {
@@ -268,22 +226,57 @@ app.delete('/api/songs/:id', async (req, res) => {
   }
 });
 
-// UPDATE a song by its ID
-app.put('/api/songs/:id', async (req, res) => {
+// --- 1. DELETE THE REDUNDANT ROUTES FIRST ---
+// Delete the old app.put('/api/songs/:id') 
+// Delete the old app.patch('/api/songs/:id/duration')
+// Delete the old app.patch('/api/songs/:id') WITHOUT the upload.fields
+
+// --- 2. ADD THIS ORGANIZED BLOCK ---
+
+// A. Specific sub-routes MUST come before generic ones
+app.patch('/api/songs/:id/duration', async (req, res) => {
   try {
-    // findByIdAndUpdate takes 3 things: the ID, the new data (req.body), and {new: true} to return the updated version
-    const updatedSong = await Song.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    
-    if (!updatedSong) {
-      return res.status(404).json({ message: "Song not found" });
+    const { duration } = req.body;
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id,
+      { duration: duration },
+      { returnDocument: 'after' }
+    );
+    res.json(updatedSong);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// B. The Main Update Route (Handles the "Save Changes" button)
+// This MUST have upload.fields to read the Title and Artist from your FormData
+app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
+  try {
+    const { title, artist } = req.body;
+    let updateData = { title, artist };
+
+    // Update Cloudinary links only if NEW files were actually sent
+    if (req.files) {
+      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
+      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
     }
+
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id, 
+      updateData, 
+      { returnDocument: 'after' } 
+    );
+
+    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
     
     res.status(200).json(updatedSong);
   } catch (error) {
-    console.error("Error updating song:", error);
-    res.status(500).json({ message: "Server error while updating" });
+    console.error("Update Error:", error);
+    res.status(500).json({ message: "Server error during update", error: error.message });
   }
 });
+
+// C. Keep your Playlist routes below the song routes
 
 // Get all playlists
 app.get('/api/playlists', async (req, res) => {
