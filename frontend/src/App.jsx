@@ -63,23 +63,23 @@ function App() {
 
   // --- 2. SINGLE SOURCE OF TRUTH FOR PLAYLISTS (Place it here) ---
   useEffect(() => {
-  const fetchUserLibrary = async () => {
-    const userId = localStorage.getItem('userId');
-    // Use localhost for local testing!
-    const url = `${API_BASE_URL}/api/playlists?userId=${userId}`;
-    
-    if (isAuthenticated && userId) {
-      try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (Array.isArray(data)) setUserPlaylists(data);
-      } catch (err) {
-        console.error("Library Fetch Failed:", err);
+    const fetchUserLibrary = async () => {
+      const userId = localStorage.getItem('userId');
+      // Use localhost for local testing!
+      const url = `${API_BASE_URL}/api/playlists?userId=${userId}`;
+      
+      if (isAuthenticated && userId) {
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+          if (Array.isArray(data)) setUserPlaylists(data);
+        } catch (err) {
+          console.error("Library Fetch Failed:", err);
+        }
       }
-    }
-  };
-  fetchUserLibrary();
-}, [isAuthenticated, view]); // This triggers the fetch as soon as login view closes
+    };
+    fetchUserLibrary();
+  }, [isAuthenticated, view]); // This triggers the fetch as soon as login view closes
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
@@ -122,6 +122,7 @@ function App() {
       }
     }
   }, []);
+
   // --- Playback Engine Effect ---
   useEffect(() => {
     if (isPlaying && currentTrack && audioRef.current) {
@@ -254,33 +255,49 @@ function App() {
   };
 
   const handleNext = () => {
+    // 1. Determine which list we should be playing from
+    const isFilteredView = selectedPlaylist || activeCategory === 'Liked';
+    const currentPool = isFilteredView ? filteredPlaylist : playlist;
+
     if (queue.length > 0) {
-      // 1. Get the first song from the queue
       const nextFromQueue = queue[0];
-      
-      // 2. Find its index in the main library to update the player
-      const indexInPlaylist = playlist.findIndex(s => s._id === nextFromQueue._id);
-      
-      if (indexInPlaylist !== -1) {
-        setCurrentTrackIndex(indexInPlaylist);
-        // 3. Remove that song from the queue
+      const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
+      if (indexInGlobal !== -1) {
+        setCurrentTrackIndex(indexInGlobal);
         setQueue(prev => prev.slice(1));
-        return; // Stop here so we don't trigger the normal "next" logic
+        return;
       }
     }
 
-    // Normal "Next" Logic (if queue is empty)
+    // 2. Find where the current song sits in the current pool
+    const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+
     if (isShuffle) {
-      let randomIndex = Math.floor(Math.random() * playlist.length);
-      setCurrentTrackIndex(randomIndex);
+      const randomIndex = Math.floor(Math.random() * currentPool.length);
+      const globalIndex = playlist.findIndex(s => s._id === currentPool[randomIndex]._id);
+      setCurrentTrackIndex(globalIndex);
     } else {
-      setCurrentTrackIndex((prevIndex) => (prevIndex + 1) % playlist.length);
+      // Move to the next song in the POOL, then map it back to the global index
+      const nextIndexInPool = (currentIndexInPool + 1) % currentPool.length;
+      const nextSong = currentPool[nextIndexInPool];
+      const globalIndex = playlist.findIndex(s => s._id === nextSong._id);
+      setCurrentTrackIndex(globalIndex);
     }
   };
 
+
   const handlePrev = () => {
-    setCurrentTrackIndex((prevIndex) => prevIndex === 0 ? playlist.length - 1 : prevIndex - 1);
+    const isFilteredView = selectedPlaylist || activeCategory === 'Liked';
+    const currentPool = isFilteredView ? filteredPlaylist : playlist;
+    
+    const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+    const prevIndexInPool = currentIndexInPool <= 0 ? currentPool.length - 1 : currentIndexInPool - 1;
+    
+    const prevSong = currentPool[prevIndexInPool];
+    const globalIndex = playlist.findIndex(s => s._id === prevSong._id);
+    setCurrentTrackIndex(globalIndex);
   };
+
 
   const handleSongEnd = () => handleNext();
 
@@ -1135,9 +1152,33 @@ function App() {
 
                   {/* Merged Action Unit */}
                   <div className="groove-action-unit" style={{ marginTop: '25px', paddingLeft: '0', background: 'transparent', border: 'none' }}>
-                    <button className="groove-play-btn" onClick={togglePlayPause}>
-                      {isPlaying ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" style={{marginLeft: '4px'}} />}
+                    <button 
+                      className="groove-play-btn" 
+                      onClick={() => {
+                        // Check if the current playing song is actually in this playlist
+                        const isCurrentTrackInView = filteredPlaylist.some(s => s._id === currentTrack?._id);
+                        
+                        if (!isPlaying || !isCurrentTrackInView) {
+                          // If not playing, or playing a different playlist, start the first song of THIS list
+                          if (filteredPlaylist.length > 0) {
+                            const firstSongGlobalIndex = playlist.findIndex(s => s._id === filteredPlaylist[0]._id);
+                            setCurrentTrackIndex(firstSongGlobalIndex);
+                            setIsPlaying(true);
+                          }
+                        } else {
+                          // If already playing from this list, just pause/resume
+                          togglePlayPause();
+                        }
+                      }}
+                    >
+                      {/* Show Pause icon only if playing AND the song is part of this playlist pool */}
+                      {isPlaying && filteredPlaylist.some(s => s._id === currentTrack?._id) ? (
+                        <Pause size={28} fill="white" />
+                      ) : (
+                        <Play size={28} fill="white" style={{marginLeft: '4px'}} />
+                      )}
                     </button>
+
                     <div className="groove-mini-frame">
                       <img src={currentTrack?.cover || filteredPlaylist[0]?.cover} alt="" />
                     </div>
