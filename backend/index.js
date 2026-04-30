@@ -180,21 +180,28 @@
   // In your backend index.js
   app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
     try {
-      const { title, artist, duration, userId } = req.body; // Extract userId from the form data
+      const { title, artist, duration, userId } = req.body;
 
-      // 1. ADMIN CHECK (The Security Gate)
+      // 1. ADMIN CHECK
       const user = await User.findById(userId);
       if (!user || user.role !== 'admin') {
-        return res.status(403).json({ message: "Access Denied: Only Admins can upload songs." });
+        return res.status(403).json({ message: "Access Denied" });
       }
 
-      // 2. SONG UPLOAD LOGIC (Only runs if user is admin)
+      // 2. DUPLICATE CHECK (The Fix)
+      const existingSong = await Song.findOne({ title, artist });
+      if (existingSong) {
+        // If it exists, we return the existing song instead of creating a new one
+        return res.status(200).json(existingSong); 
+      }
+
+      // 3. CREATE NEW IF NOT FOUND
       const newSong = new Song({
         title,
         artist,
         duration: duration ? parseFloat(duration) : 0, 
-        src: req.files['audio'][0].path,  // Cloudinary URL
-        cover: req.files['cover'] ? req.files['cover'][0].path : "/Groove.png", // Cloudinary URL
+        src: req.files['audio'][0].path,
+        cover: req.files['cover'] ? req.files['cover'][0].path : "https://res.cloudinary.com/your_cloud/image/upload/v1/Groove.png", 
       });
 
       await newSong.save();
