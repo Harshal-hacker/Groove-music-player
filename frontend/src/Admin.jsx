@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Image as ImageIcon, UploadCloud, ArrowLeft, CheckCircle2, Loader2, Trash2, Edit3, Search, AlertCircle } from 'lucide-react';
+import { Music, Image as ImageIcon, UploadCloud, FolderPlus, ArrowLeft, CheckCircle2, Loader2, Trash2, Edit3, Search, AlertCircle } from 'lucide-react';
 import { API_BASE_URL } from './config';
 
 function Admin({ onBack }) {
@@ -160,6 +160,48 @@ function Admin({ onBack }) {
       console.error("Submit Error:", err);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleBulkFolderUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    // Retrieve your stored userId from login
+    const userId = localStorage.getItem('userId'); 
+
+    const folderGroups = {};
+    files.forEach(file => {
+      const pathParts = file.webkitRelativePath.split('/');
+      if (pathParts.length > 1) {
+        const folderName = pathParts[0];
+        if (!folderGroups[folderName]) folderGroups[folderName] = [];
+        folderGroups[folderName].push(file);
+      }
+    });
+
+    try {
+      for (const [folderName, tracks] of Object.entries(folderGroups)) {
+        for (const track of tracks) {
+          const formData = new FormData();
+          formData.append('title', track.name.replace(/\.[^/.]+$/, "")); 
+          formData.append('artist', 'Bulk Upload');
+          formData.append('audio', track);
+          
+          // IMPORTANT: The backend expects 'cover' and 'userId'
+          // If no cover is selected, send your default logo
+          formData.append('cover', coverFile); 
+          formData.append('userId', userId); 
+
+          await fetch(`${API_BASE_URL}/api/songs/upload`, {
+            method: 'POST',
+            body: formData
+          });
+        }
+      }
+      alert("Bulk Upload Successful!");
+    } catch (error) {
+      console.error("403 Check: Are you sure this user is an admin in MongoDB?", error);
     }
   };
 
@@ -324,6 +366,47 @@ function Admin({ onBack }) {
               {isUploading ? "PROCESSING..." : editingSongId ? "SAVE CHANGES" : "PUSH TO LIBRARY"}
             </button>
           </form>
+
+          {/* ADD THE BULK SECTION HERE */}
+  <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+    <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <FolderPlus size={20} color="#10b981" /> 
+      Bulk Import
+    </h3>
+    
+    <div 
+      className="bulk-drop-box"
+      onClick={() => document.getElementById('bulk-folder-input').click()}
+      style={{
+        width: '100%',
+        padding: '30px',
+        border: '2px dashed rgba(16, 185, 129, 0.3)',
+        borderRadius: '24px',
+        textAlign: 'center',
+        background: 'rgba(16, 185, 129, 0.02)',
+        cursor: 'pointer',
+        transition: '0.3s'
+      }}
+    >
+      <div style={{ marginBottom: '15px' }}>
+        <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
+      </div>
+      <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Import Folders</h4>
+      <p style={{ color: '#64748b', fontSize: '11px', margin: 0, lineHeight: '1.4' }}>
+        Select folders to automatically<br/>create grouped playlists
+      </p>
+      
+      <input 
+        id="bulk-folder-input"
+        type="file" 
+        webkitdirectory="true" 
+        directory="true" 
+        multiple 
+        style={{ display: 'none' }} 
+        onChange={handleBulkFolderUpload} 
+      />
+    </div>
+  </div>
         </div>
 
         {/* RIGHT: LIBRARY MANAGEMENT */}
