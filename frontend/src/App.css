@@ -1082,7 +1082,7 @@ h1, h2, h3, h4 {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.ultra-action-circle {
+.ultra-action-circle2 {
   aspect-ratio: 1/1;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1095,12 +1095,31 @@ h1, h2, h3, h4 {
   color: #94a3b8;
 }
 
-.ultra-action-circle:hover {
+.ultra-action-circle2:hover {
   background: rgba(16, 185, 129, 0.15);
   border-color: #10b981;
   color: #10b981;
   transform: translateY(-3px);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.ultra-action-circle {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.03); /* Subtle matte square */
+  border-radius: 14px; /* The "Squircle" look */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.ultra-action-circle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  border-color: rgba(16, 185, 129, 0.3); /* Subtle Emerald glow on hover */
 }
 
 .ultra-menu-item {

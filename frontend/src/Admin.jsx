@@ -173,7 +173,7 @@ function Admin({ onBack }) {
       {/* HEADER */}
       <nav style={{ padding: '25px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <button onClick={onBack} className="ultra-action-circle" style={{ background: 'rgba(255,255,255,0.05)' }}><ArrowLeft size={20} /></button>
+          <button onClick={onBack} className="ultra-action-circle2" style={{ background: 'rgba(255,255,255,0.05)' }}><ArrowLeft size={20} /></button>
           <h1 style={{ fontSize: '22px', fontWeight: '900', margin: 0, letterSpacing: '-0.5px' }}>Studio <span style={{ color: '#10b981' }}>Console</span></h1>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -195,7 +195,7 @@ function Admin({ onBack }) {
 
             {editingSongId && (
               <button 
-                className="ultra-action-circle" 
+                className="ultra-action-circle2" 
                 onClick={() => { 
                   setEditingSongId(null); 
                   setSongData({title:'', artist:'', duration: 0}); 
