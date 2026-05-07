@@ -5,20 +5,27 @@ const playlistSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  // Link to the User model properly
   createdBy: { 
-    type: String, 
-    default: 'User' 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User',
+    required: true 
   },
-  // We store an array of Song IDs to link the music
+  // Array of Song IDs
   songIds: [{ 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Song' 
   }],
-  // This can be a Cloudinary URL for the playlist cover
-  thumbnail: { 
+  // DISTINCTION: true for Bollywood/Bhim lists, false for user lists
+  isReadyMade: { 
+    type: Boolean, 
+    default: false 
+  }, 
+  // Branding
+  playlistCover: { 
     type: String, 
-    default: '' 
+    default: "/Groove.png" 
   }
-}, { timestamps: true });
+}, { timestamps: true }); // Keep timestamps to show "Recently Created" lists
 
 module.exports = mongoose.model('Playlist', playlistSchema);

@@ -23,6 +23,7 @@ function App() {
   const [contextMenu, setContextMenu] = useState(null); // { x: 0, y: 0, songId: null } 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
+  const avatarRef = useRef(null);
   const [showLoginTooltip, setShowLoginTooltip] = useState(false);
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('role') === 'admin'); 
   // --- Player State ---
@@ -105,14 +106,22 @@ function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    const closeMenu = (e) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+    const handleClickOutside = (e) => {
+      // 1. Check if the menu is actually open
+      // 2. Check if the click was NOT on the menu
+      // 3. Check if the click was NOT on the avatar button (trigger)
+      if (
+        showUserMenu &&
+        userMenuRef.current && !userMenuRef.current.contains(e.target) &&
+        avatarRef.current && !avatarRef.current.contains(e.target)
+      ) {
         setShowUserMenu(false);
-      } 
+      }
     };
-    document.addEventListener('mousedown', closeMenu);
-    return () => document.removeEventListener('mousedown', closeMenu);
-  }, []);
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserMenu]); // Added showUserMenu here so it stays in sync
 
   useEffect(() => {
     const user = localStorage.getItem('userId');
@@ -421,20 +430,31 @@ function App() {
   };
 
   const handleLogout = () => {
-    // 1. Clear everything from the browser
+    // 1. STOP THE MUSIC IMMEDIATELY
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = ""; // Clear the source to kill the buffer
+    }
+
+    // 2. Reset playback states
+    setIsPlaying(false);
+    setCurrentTrackIndex(0);
+    setCurrentTime(0);
+
+    // 3. Clear everything from the browser
     localStorage.removeItem('userId');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('role'); 
     
-    // 2. Reset ALL states
+    // 4. Reset ALL UI states
     setIsAuthenticated(false);
-    setIsAdmin(false); // <--- CRITICAL: Reset admin status
+    setIsAdmin(false); 
     setShowUserMenu(false);
-    setShowAdmin(false); // <--- Ensure they don't stay on the admin screen
+    setShowAdmin(false); 
     setView('player'); 
     setSelectedPlaylist(null);
     
-    console.log("Session terminated. Admin privileges revoked.");
+    console.log("Session terminated. Music stopped and privileges revoked.");
   };
 
   // Inside your Admin.jsx file selection handler
@@ -709,6 +729,9 @@ function App() {
     return matchesSearch;
   });
 
+  const userPlaylistsOnly = userPlaylists.filter(pl => !pl.isReadyMade);
+  const readyMadePlaylists = userPlaylists.filter(pl => pl.isReadyMade);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [showLikedOnly]);
@@ -756,7 +779,7 @@ function App() {
 
     // Add this above your return (App.jsx)
     if (showAdmin) {
-      return <Admin onBack={() => setShowAdmin(false)} />;
+      return <Admin onBack={() => setShowAdmin(false)} setUploadProgress={setUploadProgress} />;
     }
     
   return (
@@ -830,6 +853,7 @@ function App() {
             <>
               {/* GLASS PROFILE AVATAR */}
               <div 
+                ref={avatarRef}
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 style={{ 
                   width: '45px', height: '45px', borderRadius: '50px', 
@@ -846,7 +870,9 @@ function App() {
 
               {/* BENTO-GLASS DROPDOWN */}
               {showUserMenu && (
-                <div style={{
+                <div 
+                ref={userMenuRef}
+                style={{
                   position: 'absolute', top: '75px', right: '0', width: '300px',
                   backgroundColor: 'rgb(37, 33, 33)', 
                   backdropFilter: 'blur(40px) saturate(200%)',
@@ -1050,8 +1076,8 @@ function App() {
                 </div>
 
                 {/* Dynamic User Playlists from Database */}
-                {userPlaylists.length > 0 ? (
-                  userPlaylists.map((pl) => (
+                {userPlaylistsOnly.length > 0 ? (
+                  userPlaylistsOnly.map((pl) => (
                     <div key={pl._id} onClick={() => { setSelectedPlaylist(pl._id); setActiveCategory('All'); }}
                     onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist')}
                       style={{ 
@@ -1092,6 +1118,32 @@ function App() {
         }} className="bento-scrollbar">
           {activeCategory === 'All' && !selectedPlaylist ? (
             <>
+            {/* --- NEW READY-MADE SHELF --- */}
+            {readyMadePlaylists.length > 0 && (
+              <div style={{ marginBottom: '40px' }}>
+                <p style={{ fontSize: '11px', fontWeight: '800', opacity: 0.4, letterSpacing: '2px', marginBottom: '20px' }}>CURATED FOR YOU</p>
+                <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', paddingBottom: '15px' }} className="bento-scrollbar">
+                  {readyMadePlaylists.map(pl => (
+                    <div 
+                      key={pl._id} 
+                      onClick={() => setSelectedPlaylist(pl._id)}
+                      className="advanced-music-card" 
+                      style={{ minWidth: '180px', cursor: 'pointer', padding: '12px' }}
+                    >
+                      <div style={{ width: '100%', aspectRatio: '1/1', borderRadius: '18px', overflow: 'hidden', marginBottom: '12px' }}>
+                        <img 
+                          src={pl.playlistCover || "/Groove.png"} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          alt={pl.name} 
+                        />
+                      </div>
+                      <h4 style={{ fontSize: '14px', fontWeight: '800', margin: 0 }}>{pl.name}</h4>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>{pl.songIds.length} Songs</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={{ marginBottom: '50px' }}>
               <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>TRENDING</span>
             </div>
@@ -1500,6 +1552,7 @@ function App() {
           </div>
         </div>
       </footer>
+      
       {contextMenu && (
         <div 
           className={`glass-context-menu ${contextMenu.alignLeft ? 'align-left' : ''}`}

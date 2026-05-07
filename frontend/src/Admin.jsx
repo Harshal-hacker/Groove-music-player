@@ -10,7 +10,7 @@ function Admin({ onBack }) {
   const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [editingSongId, setEditingSongId] = useState(null);
-
+  const [uploadProgress, setUploadProgress] = useState(0);
   // --- Management State ---
   const [existingSongs, setExistingSongs] = useState([]);
   const [mgmtSearch, setMgmtSearch] = useState('');
@@ -165,44 +165,47 @@ function Admin({ onBack }) {
 
   const handleBulkFolderUpload = async (event) => {
     const files = Array.from(event.target.files);
-    if (files.length === 0) return;
+    const userId = localStorage.getItem('userId');
 
-    // Retrieve your stored userId from login
-    const userId = localStorage.getItem('userId'); 
+    for (const file of files) {
+      if (!file.type.startsWith('audio/')) continue;
 
-    const folderGroups = {};
-    files.forEach(file => {
-      const pathParts = file.webkitRelativePath.split('/');
-      if (pathParts.length > 1) {
-        const folderName = pathParts[0];
-        if (!folderGroups[folderName]) folderGroups[folderName] = [];
-        folderGroups[folderName].push(file);
-      }
-    });
+      const formData = new FormData();
+      formData.append('title', file.name.replace(/\.[^/.]+$/, ""));
+      formData.append('artist', 'Bulk Import');
+      formData.append('audio', file);
+      formData.append('userId', userId);
+      if (coverFile) formData.append('cover', coverFile);
 
-    try {
-      for (const [folderName, tracks] of Object.entries(folderGroups)) {
-        for (const track of tracks) {
-          const formData = new FormData();
-          formData.append('title', track.name.replace(/\.[^/.]+$/, "")); 
-          formData.append('artist', 'Bulk Upload');
-          formData.append('audio', track);
-          
-          // IMPORTANT: The backend expects 'cover' and 'userId'
-          // If no cover is selected, send your default logo
-          formData.append('cover', coverFile); 
-          formData.append('userId', userId); 
+      // Using a Promise to wrap the XHR for async/await flow
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        // TRACK PROGRESS
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            console.log(`Uploading ${file.name}: ${percent}%`);
+            setUploadProgress(percent); // Update your state here
+          }
+        });
 
-          await fetch(`${API_BASE_URL}/api/songs/upload`, {
-            method: 'POST',
-            body: formData
-          });
-        }
-      }
-      alert("Bulk Upload Successful!");
-    } catch (error) {
-      console.error("403 Check: Are you sure this user is an admin in MongoDB?", error);
+        xhr.open("POST", `${API_BASE_URL}/api/songs/upload`);
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response);
+          } else {
+            reject(xhr.statusText);
+          }
+        };
+
+        xhr.onerror = () => reject("Network Error");
+        xhr.send(formData);
+      });
     }
+    setUploadProgress(0); // Reset after completion
+    alert("All uploads finished!");
   };
 
   return (
@@ -368,45 +371,70 @@ function Admin({ onBack }) {
           </form>
 
           {/* ADD THE BULK SECTION HERE */}
-  <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-    <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <FolderPlus size={20} color="#10b981" /> 
-      Bulk Import
-    </h3>
-    
-    <div 
-      className="bulk-drop-box"
-      onClick={() => document.getElementById('bulk-folder-input').click()}
-      style={{
-        width: '100%',
-        padding: '30px',
-        border: '2px dashed rgba(16, 185, 129, 0.3)',
-        borderRadius: '24px',
-        textAlign: 'center',
-        background: 'rgba(16, 185, 129, 0.02)',
-        cursor: 'pointer',
-        transition: '0.3s'
-      }}
-    >
-      <div style={{ marginBottom: '15px' }}>
-        <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
-      </div>
-      <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Import Folders</h4>
-      <p style={{ color: '#64748b', fontSize: '11px', margin: 0, lineHeight: '1.4' }}>
-        Select folders to automatically<br/>create grouped playlists
-      </p>
-      
-      <input 
-        id="bulk-folder-input"
-        type="file" 
-        webkitdirectory="true" 
-        directory="true" 
-        multiple 
-        style={{ display: 'none' }} 
-        onChange={handleBulkFolderUpload} 
-      />
-    </div>
-  </div>
+          <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <FolderPlus size={20} color="#10b981" /> 
+              Bulk Import
+            </h3>
+            
+            <div 
+              className="bulk-drop-box"
+              onClick={() => document.getElementById('bulk-folder-input').click()}
+              style={{
+                width: '100%',
+                padding: '30px',
+                border: '2px dashed rgba(16, 185, 129, 0.3)',
+                borderRadius: '24px',
+                textAlign: 'center',
+                background: 'rgba(16, 185, 129, 0.02)',
+                cursor: 'pointer',
+                transition: '0.3s'
+              }}
+            >
+              <div style={{ marginBottom: '15px' }}>
+                <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
+              </div>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Import Folders</h4>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0, lineHeight: '1.4' }}>
+                Select folders to automatically<br/>create grouped playlists
+              </p>
+
+              {/* ADD THE PROGRESS BAR HERE */}
+              {uploadProgress > 0 && (
+                <div style={{ width: '100%', marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981' }}>UPLOADING...</span>
+                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981' }}>{uploadProgress}%</span>
+                  </div>
+                  <div style={{ 
+                    width: '100%', 
+                    height: '6px', 
+                    backgroundColor: 'rgba(255,255,255,0.05)', 
+                    borderRadius: '10px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ 
+                      width: `${uploadProgress}%`, 
+                      height: '100%', 
+                      backgroundColor: '#10b981', 
+                      boxShadow: '0 0 15px rgba(16, 185, 129, 0.5)',
+                      transition: 'width 0.2s ease-out' 
+                    }} />
+                  </div>
+                </div>
+              )}
+              
+              <input 
+                id="bulk-folder-input"
+                type="file" 
+                webkitdirectory="true" 
+                directory="true" 
+                multiple 
+                style={{ display: 'none' }} 
+                onChange={handleBulkFolderUpload} 
+              />
+            </div>
+          </div>
         </div>
 
         {/* RIGHT: LIBRARY MANAGEMENT */}

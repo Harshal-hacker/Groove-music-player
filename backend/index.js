@@ -325,20 +325,26 @@
     }
   });
 
+  // index.js
   app.patch('/api/playlists/:id/add-song', async (req, res) => {
     try {
-      const { songId } = req.body;
-      
-      // $addToSet ensures no duplicate IDs are added to the array
-      const updatedPlaylist = await Playlist.findByIdAndUpdate(
-        req.params.id,
-        { $addToSet: { songIds: songId } },
-        { new: true }
-      );
+      const { songId, userId } = req.body;
+      const playlist = await Playlist.findById(req.params.id);
 
-      if (!updatedPlaylist) return res.status(404).json({ error: "Playlist not found" });
-      
-      res.json(updatedPlaylist);
+      if (!playlist) return res.status(404).json({ error: "Not found" });
+
+      // 3. SECURITY GATE: Block non-admins from modifying ready-made lists
+      if (playlist.isReadyMade) {
+        const user = await User.findById(userId);
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ message: "Ready-made playlists cannot be modified by users." });
+        }
+      }
+
+      // Standard add logic
+      playlist.songIds.addToSet(songId);
+      await playlist.save();
+      res.json(playlist);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
