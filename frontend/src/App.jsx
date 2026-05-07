@@ -47,6 +47,7 @@ function App() {
   const currentTrack = playlist.length > 0 ? playlist[currentTrackIndex] : null;
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   
 
   // --- Data Fetching Effect ---
@@ -1552,7 +1553,6 @@ function App() {
           </div>
         </div>
       </footer>
-      
       {contextMenu && (
         <div 
           className={`glass-context-menu ${contextMenu.alignLeft ? 'align-left' : ''}`}
