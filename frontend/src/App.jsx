@@ -654,38 +654,40 @@ function App() {
 
   // Function to show the menu
   const handleContextMenu = (e, id, type = 'song') => {
-    e.preventDefault();
-    
-    const menuWidth = 220;
-    const menuHeight = 300; // Approximate height of your menu
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
+  e.preventDefault();
+  
+  // 1. Establish approximate dimension models for your glass context layout frame
+  const menuWidth = 220;
+  // Account for height shifts depending on whether the Delete option renders
+  const menuHeight = (type === 'song' && localStorage.getItem('role') === 'admin') ? 380 : 320; 
+  
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
 
-    let x = e.clientX;
-    let y = e.clientY;
+  let x = e.clientX;
+  let y = e.clientY;
 
-    // 1. Prevent main menu from going off the right edge
-    if (x + menuWidth > screenWidth) {
-      x = screenWidth - menuWidth - 10; // 10px padding from edge
-    }
+  // 2. Prevent right-edge overflow: if click is too far right, shift menu left
+  if (x + menuWidth > screenWidth) {
+    x = screenWidth - menuWidth - 15; // 15px safe space cushion from right window edge
+  }
 
-    // 2. Prevent main menu from going off the bottom edge
-    if (y + menuHeight > screenHeight) {
-      y = screenHeight - menuHeight - 10;
-    }
+  // 3. Prevent bottom-edge overflow: if click is too low down, shift menu upward
+  if (y + menuHeight > screenHeight) {
+    y = screenHeight - menuHeight - 15; // 15px safe cushion above the player taskbar
+  }
 
-    // 3. Detect if we need to flip submenus to the left
-    // We flip if there isn't enough space for the menu AND a submenu (menuWidth * 2)
-    const shouldAlignLeft = e.clientX + (menuWidth * 2) > screenWidth;
+  // 4. Detect whether the glass submenus should slide left instead of right
+  const shouldAlignLeft = e.clientX + (menuWidth * 2) > screenWidth;
 
-    setContextMenu({ 
-      x, 
-      y, 
-      id, 
-      type, 
-      alignLeft: shouldAlignLeft 
-    });
-  };
+  setContextMenu({ 
+    x, 
+    y, 
+    id, 
+    type, 
+    alignLeft: shouldAlignLeft 
+  });
+};
 
   useEffect(() => {
     const handleGlobalContextMenu = (e) => {
@@ -1610,7 +1612,6 @@ function App() {
         <div 
           className={`glass-context-menu ${contextMenu.alignLeft ? 'align-left' : ''}`}
           style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-          onMouseLeave={() => setContextMenu(null)}
         >
           {contextMenu.type === 'playlist' && (
           <>
@@ -1769,7 +1770,7 @@ function App() {
               </div>
 
               {/* SECTION 4: ADMIN (ONLY IF ADMIN) */}
-              {isAdmin && (
+              {isAdmin && activeCategory === 'All' && !selectedPlaylist && (
                 <>
                   <div className="context-divider" />
                   <div className="context-item delete-text" onClick={() => handleDelete(contextMenu.id)}>
