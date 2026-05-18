@@ -155,6 +155,24 @@ function App() {
     };
   }, [contextMenu]);
 
+  // --- Premium Feature: Native Media Session Integration ---
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentTrack) {
+      // 1. Update the OS metadata card (Lockscreen / Notification drawer)
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: "Groove Collection",
+        artwork: [
+          { src: currentTrack.cover || '/Groove.png', sizes: '512x512', type: 'image/png' }
+        ]
+      });
+
+      // 2. Synchronize the playback state indicator
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
+  }, [currentTrack, isPlaying]);
+
   useEffect(() => {
     const preventDefault = (e) => {
       if (contextMenu) {
@@ -259,6 +277,39 @@ function App() {
       window.removeEventListener('resize', handleClose);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      // Hardware Play/Pause action mapping
+      navigator.mediaSession.setActionHandler('play', () => {
+        togglePlayPause();
+      });
+      
+      navigator.mediaSession.setActionHandler('pause', () => {
+        togglePlayPause();
+      });
+
+      // Hardware Skip Forward action mapping
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleNext();
+      });
+
+      // Hardware Skip Backward action mapping
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        handlePrev();
+      });
+    }
+    
+    // Clean up handlers when component unmounts to prevent memory leaks
+    return () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+      }
+    };
+  }, [playlist, currentTrackIndex, isPlaying]); // Keep dependency array synced with your playback controls
 
   // --- Handlers: Playback ---
   const togglePlayPause = () => {
@@ -1452,21 +1503,23 @@ function App() {
         }}>
           
           {/* --- 1. MINIMALIST TRACK INFO --- */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden' }}>
-              <img 
-                src={currentTrack?.cover || "/Groove.png"} // INLINE CHECK HERE
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                alt="" 
-                onError={(e) => { e.target.src = "/Groove.png"; }}
-              />
-              {isPlaying && <div className="playing-glow" style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 3px #10b981' }} />}
+          {/* Inside the !isMobile block -> Footer Track Info */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', minWidth: '240px' }}>
+            <div style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0 }}>
+              <img src={currentTrack?.cover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={(e) => e.target.src = "/Groove.png"} />
             </div>
-            <div style={{ maxWidth: '180px' }}>
-              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentTrack?.title || "IDLE"}
-              </h4>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', width: '100%' }}>
+              <div className="sliding-text-container">
+                <h4 
+                  key={currentTrack?._id || 'idle'} 
+                  className={`desktop-track-title ${isPlaying ? 'should-slide' : ''}`} 
+                  style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#fff' }}
+                >
+                  {currentTrack?.title || "IDLE"}
+                </h4>
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentTrack?.artist || "Standby"}
               </p>
             </div>

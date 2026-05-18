@@ -1498,3 +1498,35 @@ h1, h2, h3, h4 {
   line-height: 1.2;
   margin: 5px 0;
 }
+
+/* Premium Seamless Sliding Track Text */
+.sliding-text-container {
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  max-width: 180px; /* Match the track info bounding box */
+  white-space: nowrap;
+}
+
+.desktop-track-title {
+  display: inline-block;
+  white-space: nowrap;
+  padding-right: 50px; /* Gives spacing before the loop restarts */
+}
+
+/* Seamless infinite scroll when song is playing */
+.desktop-track-title.should-slide {
+  animation: grooveSeamlessSlide 12s linear infinite;
+}
+
+@keyframes grooveSeamlessSlide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  15% {
+    transform: translate3d(0, 0, 0); /* Holds briefly at the start so it's readable */
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0); /* Seamlessly scrolls halfway to perfectly tile */
+  }
+}
