@@ -1808,7 +1808,7 @@ function App() {
                 }}
                 className="play-trigger"
               >
-                {isPlaying ? <Pause size={24} color="#000" fill="#000" /> : <Play size={24} color="#000" fill="#000" style={{ marginLeft: '4px' }} />}
+                {isPlaying ? <Pause size={24} color="#000" fill="#000" /> : <Play size={24} color="#000" fill="#000"  />}
               </div>
 
               <SkipForward onClick={handleNext} size={20} fill="#fff" style={{ cursor: 'pointer' }} />
