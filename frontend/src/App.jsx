@@ -34,6 +34,7 @@ function App() {
   const [userData, setUserData] = useState({ likedSongs: [], role: localStorage.getItem('role') || 'user' });
   const [volume, setVolume] = useState(1); 
   const [isMuted, setIsMuted] = useState(false);
+  const [preMuteVolume, setPreMuteVolume] = useState(0.5);
   const [isShuffle, setIsShuffle] = useState(false);
   const [isRepeat, setIsRepeat] = useState(false);
   const audioRef = useRef(null);
@@ -48,7 +49,11 @@ function App() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
-  
+  const [isUploading, setIsUploading] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
+  const [playbackContext, setPlaybackContext] = useState([]);
+  const [toast, setToast] = useState(null);
 
   // --- Data Fetching Effect ---
   // App.jsx
@@ -313,16 +318,67 @@ function App() {
 
   // --- Handlers: Playback ---
   const togglePlayPause = () => {
-    const prevValue = isPlaying;
-    setIsPlaying(!prevValue);
-    prevValue ? audioRef.current.pause() : audioRef.current.play();
-  };
+  if (!audioRef.current) return;
+
+  const audio = audioRef.current;
+  const fadeDuration = 300; // Total transition time in milliseconds
+  const steps = 20; // How many steps to smoothly slide volume
+  const stepTime = fadeDuration / steps;
+  const targetVolume = volume; // Your master volume state value
+
+  if (isPlaying) {
+    // --- PREMIUM FADE OUT ON PAUSE ---
+    let currentStep = 0;
+    
+    const fadeOutInterval = setInterval(() => {
+      currentStep++;
+      // Linearly reduce the volume multiplier down to zero
+      const newVolume = targetVolume * (1 - currentStep / steps);
+      
+      if (newVolume >= 0 && newVolume <= 1) {
+        audio.volume = newVolume;
+      }
+
+      if (currentStep >= steps) {
+        clearInterval(fadeOutInterval);
+        audio.pause();
+        setIsPlaying(false);
+        audio.volume = targetVolume; // Instantly restore audio node baseline for the next play
+      }
+    }, stepTime);
+
+  } else {
+    // --- PREMIUM FADE IN ON PLAY ---
+    audio.volume = 0;
+    audio.play()
+      .then(() => {
+        setIsPlaying(true);
+        let currentStep = 0;
+
+        const fadeInInterval = setInterval(() => {
+          currentStep++;
+          // Linearly climb back up to your active master volume setting
+          const newVolume = targetVolume * (currentStep / steps);
+          
+          if (newVolume >= 0 && newVolume <= 1) {
+            audio.volume = newVolume;
+          }
+
+          if (currentStep >= steps) {
+            clearInterval(fadeInInterval);
+            audio.volume = targetVolume; // Ensure it locks exactly at target value
+          }
+        }, stepTime);
+      })
+      .catch(e => console.log("Audio play blocked by browser validation metrics:", e));
+  }
+};
 
   const handleNext = () => {
-    // 1. Determine which list we should be playing from
-    const isFilteredView = selectedPlaylist || activeCategory === 'Liked';
-    const currentPool = isFilteredView ? filteredPlaylist : playlist;
+    // 1. Fallback to global playlist array if context memory layer is empty
+    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
 
+    // 2. Handle active Queue items first if they exist
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
@@ -333,7 +389,7 @@ function App() {
       }
     }
 
-    // 2. Find where the current song sits in the current pool
+    // 3. Find where the current song sits inside our locked playback context
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
 
     if (isShuffle) {
@@ -341,7 +397,7 @@ function App() {
       const globalIndex = playlist.findIndex(s => s._id === currentPool[randomIndex]._id);
       setCurrentTrackIndex(globalIndex);
     } else {
-      // Move to the next song in the POOL, then map it back to the global index
+      // Advance normally through the locked context pool
       const nextIndexInPool = (currentIndexInPool + 1) % currentPool.length;
       const nextSong = currentPool[nextIndexInPool];
       const globalIndex = playlist.findIndex(s => s._id === nextSong._id);
@@ -349,10 +405,8 @@ function App() {
     }
   };
 
-
   const handlePrev = () => {
-    const isFilteredView = selectedPlaylist || activeCategory === 'Liked';
-    const currentPool = isFilteredView ? filteredPlaylist : playlist;
+    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
     const prevIndexInPool = currentIndexInPool <= 0 ? currentPool.length - 1 : currentIndexInPool - 1;
@@ -470,14 +524,23 @@ function App() {
       });
 
       if (res.ok) {
-        setExistingSongs(prev => prev.filter(s => s._id !== id));
+        // Clear it from the main state rendering your grid layout instantly
+        setPlaylist(prev => prev.filter(s => s._id !== id));
+        
+        // If the deleted song happens to be currently playing, safely pause the audio engine
+        if (currentTrack?._id === id) {
+          setIsPlaying(false);
+          if (audioRef.current) audioRef.current.pause();
+          setCurrentTrackIndex(0);
+        }
+
         alert("Track removed from library.");
       } else {
         const errorData = await res.json();
         alert(`Error: ${errorData.message}`);
       }
     } catch (err) {
-      
+      console.error("Network error during track deletion pipeline:", err);
     }
   };
 
@@ -549,28 +612,40 @@ function App() {
 
   // --- Handlers: Volume ---
   const handleVolumeChange = (event) => {
-    const newVolume = parseFloat(event.target.value);
-    setVolume(newVolume);
-    if(audioRef.current) audioRef.current.volume = newVolume;
-    
-    if (newVolume > 0 && isMuted) {
-      setIsMuted(false);
-      if(audioRef.current) audioRef.current.muted = false;
-    } else if (newVolume === 0) {
-      setIsMuted(true);
-    }
-  };
+  const newVolume = parseFloat(event.target.value);
+  setVolume(newVolume); // Keeps your master baseline state safe
+  
+  // Only update the audio node directly if the track isn't actively running a cross-fade transition
+  if (audioRef.current) {
+    audioRef.current.volume = newVolume;
+  }
+  
+  if (newVolume > 0 && isMuted) {
+    setIsMuted(false);
+    if(audioRef.current) audioRef.current.muted = false;
+  } else if (newVolume === 0) {
+    setIsMuted(true);
+  }
+};
 
   const toggleMute = () => {
-    const newMutedState = !isMuted;
-    setIsMuted(newMutedState);
-    if(audioRef.current) audioRef.current.muted = newMutedState;
-    
-    if (!newMutedState && volume === 0) {
-      setVolume(0.5);
-      if(audioRef.current) audioRef.current.volume = 0.5;
-    }
-  };
+  if (!audioRef.current) return;
+
+  if (isMuted) {
+    // 1. UNMUTE: Restore the previous sound levels
+    audioRef.current.muted = false;
+    audioRef.current.volume = preMuteVolume;
+    setVolume(preMuteVolume);
+    setIsMuted(false);
+  } else {
+    // 2. MUTE: Remember current volume, then silence the node completely
+    setPreMuteVolume(volume);
+    audioRef.current.muted = true;
+    audioRef.current.volume = 0;
+    setVolume(0);
+    setIsMuted(true);
+  }
+};
 
   // --- Like Toggle Handler ---
   const toggleLike = async (songId, e) => {
@@ -699,11 +774,73 @@ function App() {
     return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
   }, []);
 
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      // SAFEGUARD: If the user is typing in a search bar or any input box, disable shortcuts!
+      const activeTagName = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (activeTagName === 'input' || activeTagName === 'textarea') {
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        // 1. SPACEBAR -> SMOOTH PLAY / PAUSE
+        case ' ':
+        case 'spacebar':
+          e.preventDefault(); // Prevents the browser window from jumping/scrolling down
+          togglePlayPause();
+          break;
+
+        // 2. M KEY -> INSTANT MUTE TOGGLE
+        case 'm':
+          e.preventDefault();
+          toggleMute();
+          break;
+
+        // 3. ARROW RIGHT -> JUMP FORWARD 5 SECONDS
+        case 'arrowright':
+          if (audioRef.current && duration) {
+            e.preventDefault();
+            const forwardTime = Math.min(audioRef.current.currentTime + 5, duration);
+            audioRef.current.currentTime = forwardTime;
+            setCurrentTime(forwardTime);
+          }
+          break;
+
+        // 4. ARROW LEFT -> JUMP BACKWARD 5 SECONDS
+        case 'arrowleft':
+          if (audioRef.current) {
+            e.preventDefault();
+            const backwardTime = Math.max(audioRef.current.currentTime - 5, 0);
+            audioRef.current.currentTime = backwardTime;
+            setCurrentTime(backwardTime);
+          }
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    // Attach listener to window context
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    
+    // Clean up event binding on unmount to prevent severe memory leaks
+    return () => {
+      window.removeEventListener('keydown', handleGlobalShortcuts);
+    };
+  }, [playlist, currentTrackIndex, isPlaying, volume, isMuted, preMuteVolume, duration]);
+
   // Function to actually add the song to the playlist in the DB
   const handleAddToPlaylist = async (songId, playlistId) => {
+    // 1. Instantly shut the right-click menu framework for snappy feedback
+    setContextMenu(null);
+
+    // Find the playlist name locally so we can print it in the toast banner
+    const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
+    const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
-      // const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ songId })
@@ -712,15 +849,30 @@ function App() {
       if (response.ok) {
         const updatedPlaylist = await response.json();
         
-        // Update our local state so the UI knows the song is now in the playlist
         setUserPlaylists(prev => prev.map(pl => 
           pl._id === playlistId ? updatedPlaylist : pl
         ));
 
-        setContextMenu(null); // Close the menu
+        // 2. TRIGGER THE GLOWING SUCCESS TOAST
+        setToast({
+          message: `Added to "${playlistName}" successfully!`,
+          type: 'success'
+        });
+
+        // 3. Auto-dismiss the toast alert banner after 3 seconds cleanly
+        setTimeout(() => {
+          setToast(null);
+        }, 3000);
+
+      } else {
+        // Fallback error alert banner if database rejects it
+        setToast({ message: "Failed to add song to database playlist.", type: 'error' });
+        setTimeout(() => setToast(null), 3000);
       }
     } catch (error) {
       console.error("Failed to add song:", error);
+      setToast({ message: "Network connection error.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -831,9 +983,22 @@ function App() {
   );
 }
 
-    // Add this above your return (App.jsx)
     if (showAdmin) {
-      return <Admin onBack={() => setShowAdmin(false)} setUploadProgress={setUploadProgress} />;
+      return (
+        <Admin 
+          onBack={() => setShowAdmin(false)} 
+          uploadProgress={uploadProgress} // Ensure this prop is passed too!
+          setUploadProgress={setUploadProgress} 
+          
+          // PASS THE ACTUAL STATE VALUE AND THE MODIFIER HERE
+          isUploading={isUploading} 
+          setIsUploading={setIsUploading}
+          
+          setOverallProgress={setOverallProgress}
+          setUploadStats={setUploadStats}
+          setPlaylist={setPlaylist}
+        />
+      );
     }
     
   return (
@@ -842,6 +1007,56 @@ function App() {
       background: 'radial-gradient(circle at 50% 50%, #121212 0%, #000 100%)',
       color: '#fff', fontFamily: "'Plus Jakarta Sans', sans-serif"
     }}>
+
+      {/* PERSISTENT ULTRA-SLIM TOP EDGE PROGRESS LINE */}
+    {isUploading && (
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '4px', backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 99999 }}>
+        <div style={{ 
+          width: `${overallProgress}%`, 
+          height: '100%', 
+          backgroundColor: '#10b981', 
+          boxShadow: '0 0 20px rgba(16, 185, 129, 0.8)', 
+          transition: 'width 0.2s ease-out' 
+        }} />
+      </div>
+    )}
+
+    {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '30px',
+          right: '40px',
+          backgroundColor: 'rgba(10, 10, 15, 0.9)',
+          backdropFilter: 'blur(20px) saturate(180%)',
+          border: toast.type === 'success' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+          borderRadius: '16px',
+          padding: '16px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          boxShadow: toast.type === 'success' 
+            ? '0 20px 40px rgba(0,0,0,0.5), 0 0 30px rgba(16, 185, 129, 0.15)' 
+            : '0 20px 40px rgba(0,0,0,0.5), 0 0 30px rgba(239, 68, 68, 0.15)',
+          zIndex: 99999,
+          animation: 'slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+        }}>
+          {/* Neon green check circle icon for success, red warning icon for errors */}
+          {toast.type === 'success' ? (
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+          ) : (
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444', boxShadow: '0 0 10px #ef4444' }} />
+          )}
+          
+          <span style={{ 
+            fontSize: '14px', 
+            fontWeight: '700', 
+            color: '#fff',
+            letterSpacing: '-0.2px'
+          }}>
+            {toast.message}
+          </span>
+        </div>
+      )}
       
       {/* 1. AUDIO ENGINE */}
       {currentTrack && (
@@ -1214,9 +1429,10 @@ function App() {
                 
                 return (
                   <div 
-                    key={track._id} 
-                    className="advanced-music-card" 
+                    key={track._id}  
+                    className={`advanced-music-card ${isActive ? 'active' : ''}`}
                     onClick={() => { 
+                      setPlaybackContext(filteredPlaylist);
                       setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
                       setIsPlaying(true); 
                     }}
@@ -1390,12 +1606,12 @@ function App() {
             <div className="groove-tracklist">
               {filteredPlaylist.map((track, index) => {
                 const displayCover = track.cover || "/Groove.png";
-                const isActive = currentTrack?._id === track._id;
+                const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
                 return (
                   <div 
-                    key={track._id} 
+                    key={`${track._id}-${index}`}
                     className={`groove-track-card ${isActive ? 'active' : ''}`}
-                    onClick={() => { setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); setIsPlaying(true); }}
+                    onClick={() => { setPlaybackContext(filteredPlaylist); setCurrentTrackIndex(filteredPlaylist.findIndex(p => p._id === track._id)); setIsPlaying(true); }}
                     onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                   >
                     <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
@@ -1482,6 +1698,54 @@ function App() {
         </aside>
       </div>
 
+      {/* PERSISTENT FLOATING HUD TRACKER BOX */}
+    {isUploading && (
+      <div style={{
+        position: 'fixed',
+        bottom: '130px', // Sits perfectly anchored right above your 110px footer bar
+        left: '40px',    // Aligns beautifully with the left layout boundaries
+        width: '260px',
+        backgroundColor: 'rgba(10, 10, 15, 0.85)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderRadius: '16px',
+        padding: '16px',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+        zIndex: 1050,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', letterSpacing: '1px' }}>
+            UPLOADING
+          </span>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>
+            {uploadStats.current}/{uploadStats.total} Files
+          </span>
+        </div>
+        
+        <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+          Processing media batch...
+        </div>
+
+        {/* Inner Progress Bar Rail */}
+        <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', marginTop: '4px' }}>
+          <div style={{ 
+            width: `${overallProgress}%`, 
+            height: '100%', 
+            backgroundColor: '#10b981', 
+            borderRadius: '10px',
+            transition: 'width 0.3s ease' 
+          }} />
+        </div>
+
+        <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'right', fontWeight: '600' }}>
+          {overallProgress}% Complete
+        </div>
+      </div>
+    )}
+
       <footer style={{ 
         height: '110px', 
         padding: '0 20px 20px 20px', // Lifted off the bottom
@@ -1537,7 +1801,7 @@ function App() {
               <div 
                 onClick={togglePlayPause} 
                 style={{ 
-                  width: '54px', height: '54px', borderRadius: '18px', backgroundColor: '#fff',
+                  width: '40px', height: '40px', borderRadius: '18px', backgroundColor: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                   transition: '0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                   boxShadow: '0 10px 20px rgba(255, 255, 255, 0.1)'
@@ -1551,16 +1815,45 @@ function App() {
               <Repeat size={16} onClick={() => setIsRepeat(!isRepeat)} style={{ cursor: 'pointer', color: isRepeat ? '#10b981' : '#444' }} />
             </div>
 
-            {/* INTELLIGENT PROGRESS BAR */}
+            {/* INTELLIGENT PROGRESS BAR HUB */}
             <div style={{ width: '100%', maxWidth: '500px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '800', width: '35px' }}>{formatTime(currentTime)}</span>
-              <div style={{ flex: 1, position: 'relative', height: '12px', display: 'flex', alignItems: 'center' }}>
+              
+              {/* TIMELINE HOVER TRACKER FRAME */}
+              <div 
+                className="timeline-slider-wrapper"
+                style={{ flex: 1, position: 'relative', height: '24px', display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+                onMouseMove={(e) => {
+                  if (!duration) return;
+                  
+                  // 1. Calculate exactly where the mouse pointer sits horizontally inside the rail bounds
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const hoverX = e.clientX - rect.left;
+                  const percentage = Math.max(0, Math.min(1, hoverX / rect.width));
+                  
+                  // 2. Convert that percentage position directly into target audio seconds
+                  const previewSeconds = percentage * duration;
+                  
+                  // 3. Inject these values straight into temporary DOM dataset hooks for CSS styling rendering
+                  e.currentTarget.style.setProperty('--hover-left', `${hoverX}px`);
+                  e.currentTarget.setAttribute('data-preview-time', formatTime(previewSeconds));
+                }}
+                onMouseLeave={(e) => {
+                  // Clear data tags instantly when mouse exits the tracking boundary frame area
+                  e.currentTarget.removeAttribute('data-preview-time');
+                }}
+              >
                 <input 
-                  type="range" min="0" max={duration || 0} value={currentTime} onChange={handleSeek} 
+                  type="range" 
+                  min="0" 
+                  max={duration || 0} 
+                  value={currentTime} 
+                  onChange={handleSeek} 
                   className="advanced-slider"
-                  style={{ width: '100%', height: '4px', accentColor: '#10b981' }} 
+                  style={{ width: '100%', height: '4px', accentColor: '#10b981', background: 'rgba(255,255,255,0.1)', cursor: 'pointer' }} 
                 />
               </div>
+              
               <span style={{ fontSize: '10px', color: '#64748b', fontWeight: '800', width: '35px' }}>{formatTime(duration)}</span>
             </div>
           </div>
@@ -1599,10 +1892,24 @@ function App() {
 
             {/* VOLUME CONTROLS */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '8px 15px', borderRadius: '12px' }}>
-              <Volume2 size={16} color="#64748b" />
+              {/* DYNAMIC VOLUME CONTROLLER ICON BUTTON */}
+              <div onClick={toggleMute} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'transform 0.2s ease' }} className="volume-icon-trigger">
+                {isMuted || volume === 0 ? (
+                  <VolumeX size={16} color="#64748b" /> // Show a red muted cross symbol when silent
+                ) : (
+                  <Volume2 size={16} color="#64748b" /> // Default speaker icon
+                )}
+              </div>
+
+              {/* VOLUME SLIDER CONTROL BAR RAIL */}
               <input 
-                type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolumeChange} 
-                style={{ width: '80px', height: '3px', accentColor: '#10b981' }} 
+                type="range" 
+                min="0" 
+                max="1" 
+                step="0.01" 
+                value={volume} 
+                onChange={handleVolumeChange} 
+                style={{ width: '80px', height: '3px', accentColor: isMuted ? '#10b981' : '#10b981', cursor: 'pointer' }} 
               />
             </div>
           </div>

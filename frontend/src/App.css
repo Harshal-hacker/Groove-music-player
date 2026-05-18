@@ -1530,3 +1530,66 @@ h1, h2, h3, h4 {
     transform: translate3d(-50%, 0, 0); /* Seamlessly scrolls halfway to perfectly tile */
   }
 }
+
+/* Premium Audio Progress Hover Tooltip System */
+.timeline-slider-wrapper {
+  --hover-left: 0px;
+}
+
+/* 1. The Glowing Time Stamp Popup Card */
+.timeline-slider-wrapper[data-preview-time]::before {
+  content: attr(data-preview-time);
+  position: absolute;
+  bottom: 28px; /* Floats perfectly right above the input handle */
+  left: var(--hover-left);
+  transform: translateX(-50%);
+  background: rgba(24, 24, 27, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none; /* Stops the box from blocking user click selections */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 0 10px rgba(16, 185, 129, 0.2);
+  z-index: 9999;
+  animation: tooltipFadeIn 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 2. Micro Anchor Triangle beneath the card arrow pointer */
+.timeline-slider-wrapper[data-preview-time]::after {
+  content: '';
+  position: absolute;
+  bottom: 23px;
+  left: var(--hover-left);
+  transform: translateX(-50%);
+  border-width: 5px 5px 0;
+  border-style: solid;
+  border-color: rgba(24, 24, 27, 0.85) transparent transparent;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Premium Toast Slide-In Animation Framework */
+@keyframes slideInRight {
+  from {
+    transform: translateX(120%) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}

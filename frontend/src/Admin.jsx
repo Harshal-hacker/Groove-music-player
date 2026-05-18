@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Music, Image as ImageIcon, UploadCloud, FolderPlus, ArrowLeft, CheckCircle2, Loader2, Trash2, Edit3, Search, AlertCircle } from 'lucide-react';
 import { API_BASE_URL } from './config';
+import axios from 'axios';
+import jsmediatags from 'jsmediatags';
 
-function Admin({ onBack }) {
+function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUploading, setOverallProgress, setUploadStats, setPlaylist }) {
   // --- Form State ---
   const [songData, setSongData] = useState({ title: '', artist: '', duration: 0 });
   const [audioFile, setAudioFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [editingSongId, setEditingSongId] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  
   // --- Management State ---
   const [existingSongs, setExistingSongs] = useState([]);
   const [mgmtSearch, setMgmtSearch] = useState('');
@@ -165,47 +166,106 @@ function Admin({ onBack }) {
 
   const handleBulkFolderUpload = async (event) => {
     const files = Array.from(event.target.files);
-    const userId = localStorage.getItem('userId');
+    // Filter out any hidden system files, keeping only actual audio tracks
+    const audioFiles = files.filter(file => file.type.startsWith('audio/') || file.name.endsWith('.mp3'));
+    
+    if (!audioFiles || audioFiles.length === 0) {
+      alert("No valid audio tracks detected in the selected directory.");
+      return;
+    }
 
-    for (const file of files) {
-      if (!file.type.startsWith('audio/')) continue;
-
-      const formData = new FormData();
-      formData.append('title', file.name.replace(/\.[^/.]+$/, ""));
-      formData.append('artist', 'Bulk Import');
-      formData.append('audio', file);
-      formData.append('userId', userId);
-      if (coverFile) formData.append('cover', coverFile);
-
-      // Using a Promise to wrap the XHR for async/await flow
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        // TRACK PROGRESS
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            console.log(`Uploading ${file.name}: ${percent}%`);
-            setUploadProgress(percent); // Update your state here
+    setIsUploading(true);
+    setUploadStats({ current: 1, total: audioFiles.length });
+    
+    const fileProgressTracker = new Array(audioFiles.length).fill(0);
+    
+    // A helper function to read embedded metadata cleanly inside a Promise framework
+    const extractMetadata = (file) => {
+      return new Promise((resolve) => {
+        jsmediatags.read(file, {
+          onSuccess: (tag) => {
+            const tags = tag.tags;
+            
+            // Fallback safely to filename strings if tags happen to be empty
+            const title = tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
+            const artist = tags.artist || "Unknown Artist";
+            
+            // Extract the embedded cover art picture if it exists
+            let coverBlobFile = null;
+            if (tags.picture) {
+              const { data, format } = tags.picture;
+              const byteArray = new Uint8Array(data);
+              const blob = new Blob([byteArray], { type: format });
+              // Turn the raw image blob into a standard file object the backend expects
+              coverBlobFile = new File([blob], `cover-${Date.now()}.jpg`, { type: format });
+            }
+            
+            resolve({ title, artist, coverFile: coverBlobFile });
+          },
+          onError: (error) => {
+            console.warn("Failed reading ID3 metadata tags for file:", file.name, error);
+            // Safe backup values if a file's metadata container is corrupted
+            resolve({
+              title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""),
+              artist: "Unknown Artist",
+              coverFile: null
+            });
           }
         });
-
-        xhr.open("POST", `${API_BASE_URL}/api/songs/upload`);
-        
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.response);
-          } else {
-            reject(xhr.statusText);
-          }
-        };
-
-        xhr.onerror = () => reject("Network Error");
-        xhr.send(formData);
       });
+    };
+
+    // Process the full queue sequentially or concurrently
+    const uploadPromises = audioFiles.map(async (file, index) => {
+      // Wait for the browser engine to look inside the track metadata containers
+      const metadata = await extractMetadata(file);
+
+      const formData = new FormData();
+      formData.append('audio', file);
+      formData.append('userId', localStorage.getItem('userId'));
+      formData.append('title', metadata.title);
+      formData.append('artist', metadata.artist);
+
+      // If the file contains an embedded cover photo, append it!
+      if (metadata.coverFile) {
+        formData.append('cover', metadata.coverFile);
+      }
+
+      // Dynamic byte size tracking calculation loops
+      const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0);
+
+      return axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
+        onUploadProgress: (progressEvent) => {
+          fileProgressTracker[index] = progressEvent.loaded;
+          const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
+          const calculatedPercentage = Math.round((totalLoadedBytes / totalBytesAllFiles) * 100);
+          const globalPercentage = Math.min(calculatedPercentage, 100);
+          
+          setOverallProgress(globalPercentage);
+          setUploadProgress(globalPercentage);
+        }
+      }).then((res) => {
+        setUploadStats(prev => ({ ...prev, current: Math.min(prev.current + 1, audioFiles.length) }));
+        return res.data;
+      });
+    });
+
+    try {
+      const uploadedTracks = await Promise.all(uploadPromises);
+      if (typeof setPlaylist === 'function') {
+        setPlaylist(prev => [...uploadedTracks, ...prev]);
+      }
+      alert(`Success! Imported ${uploadedTracks.length} tracks with full artwork and metadata mappings.`);
+    } catch (err) {
+      console.error("Bulk upload pipeline broke:", err);
+      alert("An error occurred during multi-file streaming.");
+    } finally {
+      setTimeout(() => {
+        setIsUploading(false);
+        setOverallProgress(0);
+        setUploadProgress(0);
+      }, 1000);
     }
-    setUploadProgress(0); // Reset after completion
-    alert("All uploads finished!");
   };
 
   return (
@@ -374,7 +434,7 @@ function Admin({ onBack }) {
           <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <FolderPlus size={20} color="#10b981" /> 
-              Bulk Import
+              Import Folder
             </h3>
             
             <div 
