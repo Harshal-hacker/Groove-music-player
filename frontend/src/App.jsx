@@ -71,25 +71,30 @@ function App() {
       });
   }, [showAdmin, view]);
 
-  // --- 2. SINGLE SOURCE OF TRUTH FOR PLAYLISTS (Place it here) ---
+  // --- 2. SINGLE SOURCE OF TRUTH FOR PLAYLISTS  ---
   useEffect(() => {
     const fetchUserLibrary = async () => {
       const userId = localStorage.getItem('userId');
-      // Use localhost for local testing!
-      const url = `${API_BASE_URL}/api/playlists?userId=${userId}`;
       
-      if (isAuthenticated && userId) {
-        try {
-          const response = await fetch(url);
-          const data = await response.json();
-          if (Array.isArray(data)) setUserPlaylists(data);
-        } catch (err) {
-          console.error("Library Fetch Failed:", err);
+      // BUILD THE URL LOGIC: Pass the userId if it exists, otherwise leave it out cleanly
+      const url = userId 
+        ? `${API_BASE_URL}/api/playlists?userId=${userId}`
+        : `${API_BASE_URL}/api/playlists`;
+        
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setUserPlaylists(data);
         }
+      } catch (err) {
+        console.error("Library Fetch Failed:", err);
       }
     };
+
     fetchUserLibrary();
-  }, [isAuthenticated, view]); // This triggers the fetch as soon as login view closes
+    // Removed [isAuthenticated] barrier so it fetches curated rows for everyone!
+  }, [view, showAdmin, isAuthenticated]);
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
@@ -831,48 +836,31 @@ function App() {
   }, [playlist, currentTrackIndex, isPlaying, volume, isMuted, preMuteVolume, duration]);
 
   // Function to actually add the song to the playlist in the DB
+  // Update handleAddToPlaylist wrapper in App.jsx to pass active userId context
   const handleAddToPlaylist = async (songId, playlistId) => {
-    // 1. Instantly shut the right-click menu framework for snappy feedback
     setContextMenu(null);
 
-    // Find the playlist name locally so we can print it in the toast banner
     const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
     const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
+    const userId = localStorage.getItem('userId'); // Get active identity
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId })
+        body: JSON.stringify({ songId, userId }) // PASS USERID IN JSON BODY BODY
       });
 
       if (response.ok) {
         const updatedPlaylist = await response.json();
-        
-        setUserPlaylists(prev => prev.map(pl => 
+        setUserPlaylists(prev => prev.map(pl =>  
           pl._id === playlistId ? updatedPlaylist : pl
         ));
-
-        // 2. TRIGGER THE GLOWING SUCCESS TOAST
-        setToast({
-          message: `Added to "${playlistName}" successfully!`,
-          type: 'success'
-        });
-
-        // 3. Auto-dismiss the toast alert banner after 3 seconds cleanly
-        setTimeout(() => {
-          setToast(null);
-        }, 3000);
-
-      } else {
-        // Fallback error alert banner if database rejects it
-        setToast({ message: "Failed to add song to database playlist.", type: 'error' });
+        setToast({ message: `Added to "${playlistName}" successfully!`, type: 'success' });
         setTimeout(() => setToast(null), 3000);
       }
     } catch (error) {
-      console.error("Failed to add song:", error);
-      setToast({ message: "Network connection error.", type: 'error' });
-      setTimeout(() => setToast(null), 3000);
+      console.error(error);
     }
   };
 
@@ -935,8 +923,17 @@ function App() {
     return matchesSearch;
   });
 
-  const userPlaylistsOnly = userPlaylists.filter(pl => !pl.isReadyMade);
-  const readyMadePlaylists = userPlaylists.filter(pl => pl.isReadyMade);
+  const currentUserId = localStorage.getItem('userId');
+
+  // Sidebar ONLY shows playlists created by you that are NOT public curated ready-made ones
+  // It also shows public playlists that you manually decided to follow/save
+  const userPlaylistsOnly = userPlaylists.filter(pl => 
+    (!pl.isReadyMade && pl.createdBy === currentUserId) || 
+    (pl.isReadyMade && pl.followers?.some(id => String(id) === String(currentUserId)))
+  );
+
+  // Curated row exclusively for Home screen bento shelf mapping
+  const readyMadePlaylists = userPlaylists.filter(pl => pl.isReadyMade === true);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -1385,38 +1382,161 @@ function App() {
           flex: 1, overflowY: 'auto', backgroundColor: 'rgba(255,255,255,0.01)', backdropFilter: 'blur(20px)',
           borderRadius: '28px', border: '1px solid rgba(255,255,255,0.05)', padding: '40px' 
         }} className="bento-scrollbar">
+          {/*onContextMenu={(e) => {
+            const isClickingCard = e.target.closest('.curated-bento-card') || 
+                                  e.target.closest('.advanced-music-card') || 
+                                  e.target.closest('.groove-track-card') || 
+                                  e.target.closest('.glass-context-menu');
+            // Only intercept if we are on the default home screen view context
+            if (activeCategory === 'All' && !selectedPlaylist && isAdmin) {
+              e.preventDefault();
+              handleContextMenu(e, 'home-canvas', 'canvas');
+            }
+          }}
+        >*/}
           {activeCategory === 'All' && !selectedPlaylist ? (
             <>
             {/* --- NEW READY-MADE SHELF --- */}
             {readyMadePlaylists.length > 0 && (
-              <div style={{ marginBottom: '40px' }}>
-                <p style={{ fontSize: '11px', fontWeight: '800', opacity: 0.4, letterSpacing: '2px', marginBottom: '20px' }}>CURATED FOR YOU</p>
-                <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', paddingBottom: '15px' }} className="bento-scrollbar">
-                  {readyMadePlaylists.map(pl => (
-                    <div 
-                      key={pl._id} 
-                      onClick={() => setSelectedPlaylist(pl._id)}
-                      className="advanced-music-card" 
-                      style={{ minWidth: '180px', cursor: 'pointer', padding: '12px' }}
-                    >
-                      <div style={{ width: '100%', aspectRatio: '1/1', borderRadius: '18px', overflow: 'hidden', marginBottom: '12px' }}>
-                        <img 
-                          src={pl.playlistCover || "/Groove.png"} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                          alt={pl.name} 
-                        />
+              <div style={{ marginBottom: '45px', paddingBottom: '10px' }}>
+                <p style={{ 
+                  fontSize: '11px', 
+                  fontWeight: '900', 
+                  opacity: 0.5, 
+                  letterSpacing: '2.5px', 
+                  color: '#10b981', 
+                  marginBottom: '20px' 
+                }}>
+                  EXCLUSIVELY CURATED MIXES
+                </p>
+                
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '24px', 
+                  overflowX: 'auto', 
+                  paddingBottom: '20px' 
+                }} className="bento-scrollbar">
+                  {readyMadePlaylists.map(pl => {
+                    // Look up if the active user is already following this deck collection
+                    const isFollowed = pl.followers?.includes(localStorage.getItem('userId'));
+
+                    return (
+                      <div 
+                        key={pl._id} 
+                        onClick={() => setSelectedPlaylist(pl._id)}
+                        className="curated-bento-card" 
+                        style={{ 
+                          minWidth: '210px', 
+                          maxWidth: '210px',
+                          cursor: 'pointer', 
+                          padding: '16px',
+                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                          backdropFilter: 'blur(20px)',
+                          borderRadius: '24px',
+                          border: '1px solid rgba(255, 255, 255, 0.04)',
+                          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+                          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* COMPACT FLOATING CATEGORY BADGE */}
+                        <span style={{
+                          position: 'absolute',
+                          top: '24px',
+                          left: '24px',
+                          zIndex: 10,
+                          backgroundColor: 'rgba(10, 10, 15, 0.75)',
+                          backdropFilter: 'blur(10px)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#10b981',
+                          fontSize: '9px',
+                          fontWeight: '900',
+                          padding: '4px 10px',
+                          borderRadius: '50px',
+                          letterSpacing: '0.5px'
+                        }}>
+                          {pl.category ? pl.category.toUpperCase() : 'MIX'}
+                        </span>
+
+                        {/* ART WORK CONTAINER WITH OVERLAY TRIGGERS */}
+                        <div className="curated-art-wrapper" style={{ 
+                          width: '100%', 
+                          aspectRatio: '1/1', 
+                          borderRadius: '16px', 
+                          overflow: 'hidden', 
+                          marginBottom: '16px',
+                          position: 'relative',
+                          boxShadow: '0 12px 24px rgba(0,0,0,0.5)'
+                        }}>
+                          <img 
+                            src={pl.playlistCover || "/Groove.png"} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)' }} 
+                            alt={pl.name} 
+                          />
+                          
+                          {/* FIXED HOVER HUD DECK ICON OVERLAY */}
+                          <div className="curated-hover-overlay" style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'opacity 0.3s ease'
+                          }}>
+                            <div style={{
+                              width: '46px',
+                              height: '46px',
+                              backgroundColor: '#10b981',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)',
+                              transform: 'translateY(10px)',
+                              transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+                            }} className="curated-play-bubble">
+                              <Play size={20} fill="black" color="black" style={{ marginLeft: '2px' }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* DESCRIPTION META FRAME */}
+                        <div style={{ padding: '0 2px' }}>
+                          <h4 style={{ 
+                            fontSize: '15px', 
+                            fontWeight: '800', 
+                            margin: '0 0 6px 0',
+                            color: '#fff',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {pl.name}
+                          </h4>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <p style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', margin: 0 }}>
+                              {pl.songIds?.length || 0} Tracks
+                            </p>
+                            
+                            {isFollowed && (
+                              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: '800' }}>
+                                SAVED
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <h4 style={{ fontSize: '14px', fontWeight: '800', margin: 0 }}>{pl.name}</h4>
-                      <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>{pl.songIds.length} Songs</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
-            <div style={{ marginBottom: '50px' }}>
-              <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>TRENDING</span>
-            </div>
 
+            <div style={{ marginBottom: '50px' }}>
+              <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>ALL SONGS</span>
+            </div>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', // Increased for better readability
@@ -1468,7 +1588,7 @@ function App() {
                         className="card-img"
                       />
                       
-                      {/* OVERLAY PLAY BUTTON (Appears on hover or if active) 
+                      {/* OVERLAY PLAY BUTTON (Appears on hover or if active) */}
                       <div className="card-overlay" style={{
                         position: 'absolute',
                         inset: 0,
@@ -1487,7 +1607,7 @@ function App() {
                         }}>
                           {isActive ? <Pause size={24} fill="white" color="white" /> : <Play size={24} fill="white" color="white" style={{marginLeft: '3px'}} />}
                         </div>
-                      </div> */}
+                      </div>
                     </div>
 
                     {/* TEXT INFO */}
@@ -1598,7 +1718,58 @@ function App() {
                     </button>
 
                     <Shuffle size={24} className="groove-utility" color={isShuffle ? '#10b981' : '#444'} onClick={() => setIsShuffle(!isShuffle)} />
-                    <PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />
+                    {/* <PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />*/}
+                    {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
+                      <button
+                        onClick={async () => {
+                          const userId = localStorage.getItem('userId');
+                          if (!userId) return alert("Please log in to save playlists!");
+
+                          try {
+                            const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ userId })
+                            });
+
+                            if (res.ok) {
+                              const updatedPlaylist = await res.json();
+                              // Force a state map update so the sidebar re-renders instantly
+                              setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
+                              
+                              const isSaved = updatedPlaylist.followers?.includes(userId);
+                              setToast({
+                                message: isSaved ? "Added collection to your library!" : "Removed collection from library.",
+                                type: 'success'
+                              });
+                              setTimeout(() => setToast(null), 3000);
+                            }
+                          } catch (err) {
+                            console.error("Library operational error:", err);
+                          }
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          color: '#fff',
+                          padding: '8px 18px',
+                          borderRadius: '50px',
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          transition: '0.2s',
+                          marginLeft: '10px'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.borderColor = '#10b981'}
+                        onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
+                      >
+                        {userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(localStorage.getItem('userId')) 
+                          ? "REMOVE FROM LIBRARY" 
+                          : "SAVE TO LIBRARY"}
+                      </button>
+                    )}
+
+                    {/*<PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />*/}
                   </div>
                 </div>
               </div>
@@ -1915,6 +2086,7 @@ function App() {
           </div>
         </div>
       </footer>
+
       {contextMenu && (
         <div 
           className={`glass-context-menu ${contextMenu.alignLeft ? 'align-left' : ''}`}
@@ -2003,15 +2175,33 @@ function App() {
               <div className="context-divider" />
 
               {/* SECTION 2: LIBRARY */}
+              {/* Look for this sub-menu section inside your right-click song context menu handler */}
               <div className="context-item submenu-parent">
                 <div className="item-content"><FolderPlus size={16} /> <span>Add to Playlist</span></div>
                 <ChevronRight size={14} opacity={0.5} />
-                <div className="glass-submenu">
-                  {userPlaylists.map(pl => (
+                <div className="glass-submenu" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  
+                  {/* 1. PERSONAL PLAYLISTS SECTION */}
+                  <div style={{ padding: '6px 12px', fontSize: '10px', color: '#64748b', fontWeight: '800', letterSpacing: '1px' }}>YOUR PLAYLISTS</div>
+                  {userPlaylists.filter(pl => !pl.isReadyMade).map(pl => (
                     <div key={pl._id} className="context-item" onClick={() => handleAddToPlaylist(contextMenu.id, pl._id)}>
                       <span>{pl.name}</span>
                     </div>
                   ))}
+
+                  {/* 2. ADMIN ONLY: CURATED PLAYLISTS SECTION FOR UPDATING THE SHELF */}
+                  {isAdmin && (
+                    <>
+                      <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
+                      <div style={{ padding: '6px 12px', fontSize: '10px', color: '#10b981', fontWeight: '800', letterSpacing: '1px' }}>CURATED SHELVES</div>
+                      {userPlaylists.filter(pl => pl.isReadyMade).map(pl => (
+                        <div key={pl._id} className="context-item" onClick={() => handleAddToPlaylist(contextMenu.id, pl._id)}>
+                          <span style={{ color: '#34d399' }}>{pl.name}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  
                 </div>
               </div>
 
@@ -2087,6 +2277,38 @@ function App() {
               )}
             </>
           ) : null }
+          {contextMenu && contextMenu.type === 'canvas' && (
+            <>
+              <div 
+                className="context-item" 
+                style={{ color: '#10b981' }}
+                onClick={async () => {
+                  const userId = localStorage.getItem('userId');
+                  const name = prompt("Enter a name for this Curated Home Playlist:");
+                  setContextMenu(null);
+                  if (!name) return;
+
+                  try {
+                    const res = await fetch(`${API_BASE_URL}/api/playlists/curated`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name, userId, category: 'Featured' })
+                    });
+                    if (res.ok) {
+                      const newCuratedDeck = await res.json();
+                      setUserPlaylists(prev => [...prev, newCuratedDeck]);
+                      setToast({ message: `"${name}" Curated Dashboard Deck Launched!`, type: 'success' });
+                      setTimeout(() => setToast(null), 3000);
+                    }
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }}
+              >
+                <div className="item-content"><PlusCircle size={16} /> <span>Create Curated Playlist</span></div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -166,98 +166,97 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
 
   const handleBulkFolderUpload = async (event) => {
     const files = Array.from(event.target.files);
-    // Filter out any hidden system files, keeping only actual audio tracks
     const audioFiles = files.filter(file => file.type.startsWith('audio/') || file.name.endsWith('.mp3'));
     
     if (!audioFiles || audioFiles.length === 0) {
-      alert("No valid audio tracks detected in the selected directory.");
+      alert("No valid audio tracks detected.");
       return;
+    }
+
+    // Capture the name of the folder from the first file's directory path string parameters
+    // e.g., "Marathi_Hits/song.mp3" -> extracts "Marathi Hits"
+    let folderName = "Curated Folder Batch";
+    if (audioFiles[0].webkitRelativePath) {
+      folderName = audioFiles[0].webkitRelativePath.split('/')[0].replace(/_/g, ' ');
     }
 
     setIsUploading(true);
     setUploadStats({ current: 1, total: audioFiles.length });
-    
     const fileProgressTracker = new Array(audioFiles.length).fill(0);
     
-    // A helper function to read embedded metadata cleanly inside a Promise framework
     const extractMetadata = (file) => {
       return new Promise((resolve) => {
         jsmediatags.read(file, {
           onSuccess: (tag) => {
-            const tags = tag.tags;
-            
-            // Fallback safely to filename strings if tags happen to be empty
-            const title = tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
-            const artist = tags.artist || "Unknown Artist";
-            
-            // Extract the embedded cover art picture if it exists
+            const title = tag.tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
+            const artist = tag.tags.artist || "Unknown Artist";
             let coverBlobFile = null;
-            if (tags.picture) {
-              const { data, format } = tags.picture;
-              const byteArray = new Uint8Array(data);
-              const blob = new Blob([byteArray], { type: format });
-              // Turn the raw image blob into a standard file object the backend expects
-              coverBlobFile = new File([blob], `cover-${Date.now()}.jpg`, { type: format });
+            if (tag.tags.picture) {
+              const { data, format } = tag.tags.picture;
+              coverBlobFile = new File([new Blob([new Uint8Array(data)], { type: format })], `cover-${Date.now()}.jpg`, { type: format });
             }
-            
             resolve({ title, artist, coverFile: coverBlobFile });
           },
-          onError: (error) => {
-            console.warn("Failed reading ID3 metadata tags for file:", file.name, error);
-            // Safe backup values if a file's metadata container is corrupted
-            resolve({
-              title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""),
-              artist: "Unknown Artist",
-              coverFile: null
-            });
+          onError: () => {
+            resolve({ title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""), artist: "Unknown Artist", coverFile: null });
           }
         });
       });
     };
 
-    // Process the full queue sequentially or concurrently
-    const uploadPromises = audioFiles.map(async (file, index) => {
-      // Wait for the browser engine to look inside the track metadata containers
-      const metadata = await extractMetadata(file);
-
-      const formData = new FormData();
-      formData.append('audio', file);
-      formData.append('userId', localStorage.getItem('userId'));
-      formData.append('title', metadata.title);
-      formData.append('artist', metadata.artist);
-
-      // If the file contains an embedded cover photo, append it!
-      if (metadata.coverFile) {
-        formData.append('cover', metadata.coverFile);
-      }
-
-      // Dynamic byte size tracking calculation loops
-      const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0);
-
-      return axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
-        onUploadProgress: (progressEvent) => {
-          fileProgressTracker[index] = progressEvent.loaded;
-          const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
-          const calculatedPercentage = Math.round((totalLoadedBytes / totalBytesAllFiles) * 100);
-          const globalPercentage = Math.min(calculatedPercentage, 100);
-          
-          setOverallProgress(globalPercentage);
-          setUploadProgress(globalPercentage);
-        }
-      }).then((res) => {
-        setUploadStats(prev => ({ ...prev, current: Math.min(prev.current + 1, audioFiles.length) }));
-        return res.data;
-      });
-    });
-
     try {
+      // 1. Process all concurrent asset uploads to Cloudinary/MongoDB
+      const uploadPromises = audioFiles.map(async (file, index) => {
+        const metadata = await extractMetadata(file);
+        const formData = new FormData();
+        formData.append('audio', file);
+        formData.append('userId', localStorage.getItem('userId'));
+        formData.append('title', metadata.title);
+        formData.append('artist', metadata.artist);
+        if (metadata.coverFile) formData.append('cover', metadata.coverFile);
+
+        const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0);
+
+        return axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
+          onUploadProgress: (progressEvent) => {
+            fileProgressTracker[index] = progressEvent.loaded;
+            const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
+            const globalPercentage = Math.min(Math.round((totalLoadedBytes / totalBytesAllFiles) * 100), 100);
+            setOverallProgress(globalPercentage);
+            setUploadProgress(globalPercentage);
+          }
+        }).then((res) => {
+          setUploadStats(prev => ({ ...prev, current: Math.min(prev.current + 1, audioFiles.length) }));
+          return res.data; // This returns the newly created Song document with its fresh _id
+        });
+      });
+
       const uploadedTracks = await Promise.all(uploadPromises);
+      
+      // Update global songs state registry context
       if (typeof setPlaylist === 'function') {
         setPlaylist(prev => [...uploadedTracks, ...prev]);
       }
-      alert(`Success! Imported ${uploadedTracks.length} tracks with full artwork and metadata mappings.`);
+
+      // 2. RUN AUTO-CURATION: Extract the new song IDs array mapping structure
+      const newlyCreatedSongIds = uploadedTracks.map(track => track._id);
+      
+      const curationResponse = await fetch(`${API_BASE_URL}/api/playlists/bulk-curate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playlistName: folderName,
+          songIds: newlyCreatedSongIds,
+          userId: localStorage.getItem('userId')
+        })
+      });
+
+      if (curationResponse.ok) {
+        alert(`Success! Uploaded ${uploadedTracks.length} tracks and compiled them into the Curated Playlist: "${folderName}" instantly.`);
+      }
+
     } catch (err) {
-      console.error("Bulk upload pipeline broke:", err);
+      console.error("Pipeline breakdown:", err);
       alert("An error occurred during multi-file streaming.");
     } finally {
       setTimeout(() => {

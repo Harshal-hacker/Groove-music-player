@@ -287,15 +287,30 @@
 
   // Get all playlists
   app.get('/api/playlists', async (req, res) => {
+    const { userId } = req.query;
+    
     try {
-      const { userId } = req.query;
-      const query = userId ? { createdBy: userId } : { _id: null };
+      let queryCondition = {};
 
-      // CRITICAL: Add .populate('songIds') to get the full song objects
-      const playlists = await Playlist.find(query).populate('songIds'); 
-      res.json(playlists);
+      // If a user is logged in, pull their items + curated items. 
+      // If a guest is browsing (no userId), ONLY pull curated ready-made items safely!
+      if (userId && userId !== 'null' && userId !== 'undefined') {
+        queryCondition = {
+          $or: [
+            { createdBy: userId },
+            { followers: userId },
+            { isReadyMade: true }
+          ]
+        };
+      } else {
+        queryCondition = { isReadyMade: true };
+      }
+
+      const playlists = await Playlist.find(queryCondition).populate('songIds');
+      res.status(200).json(playlists);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.error("Critical Playlist Database Engine Failure:", err);
+      res.status(500).json({ message: "Internal server error fetching playlist collections." });
     }
   });
 
@@ -333,18 +348,19 @@
 
       if (!playlist) return res.status(404).json({ error: "Not found" });
 
-      // 3. SECURITY GATE: Block non-admins from modifying ready-made lists
       if (playlist.isReadyMade) {
         const user = await User.findById(userId);
         if (!user || user.role !== 'admin') {
-          return res.status(403).json({ message: "Ready-made playlists cannot be modified by users." });
+          return res.status(403).json({ message: "Ready-made playlists cannot be modified by standard users." });
         }
       }
 
-      // Standard add logic
       playlist.songIds.addToSet(songId);
       await playlist.save();
-      res.json(playlist);
+      
+      // THE POPULATE FIX: Ensure it populates tracks upon returning data packets to client arrays
+      const freshlyPopulatedPlaylist = await Playlist.findById(req.params.id).populate('songIds');
+      res.json(freshlyPopulatedPlaylist);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -374,6 +390,89 @@
       ).populate('songIds');            // CRITICAL: Must populate to show tracks
       
       res.json(updatedPlaylist);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+
+  app.patch('/api/playlists/:id/follow', async (req, res) => {
+    const { userId } = req.body;
+    const playlistId = req.params.id;
+
+    if (!userId) {
+      return res.status(400).json({ message: "User ID context is required." });
+    }
+
+    try {
+      const playlist = await Playlist.findById(playlistId);
+      if (!playlist) {
+        return res.status(404).json({ message: "Target playlist not found." });
+      }
+
+      // Check if the user ID is already present inside the follower database array
+      const isFollowing = playlist.followers.includes(userId);
+
+      if (isFollowing) {
+        // Unfollow operational workflow: Remove from personal account view array
+        playlist.followers = playlist.followers.filter(id => String(id) !== String(userId));
+      } else {
+        // Follow operational workflow: Push user reference directly into array stack
+        playlist.followers.push(userId);
+      }
+
+      await playlist.save();
+      
+      // Return the updated data structure fully populated with its child tracks
+      const updatedPlaylist = await Playlist.findById(playlistId).populate('songIds');
+      res.status(200).json(updatedPlaylist);
+    } catch (err) {
+      console.error("Library sync failure:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- ADMIN ONLY: CREATE DIRECT CURATED READY-MADE PLAYLIST CONTAINER ---
+  app.post('/api/playlists/curated', async (req, res) => {
+    try { 
+      const { name, userId, category } = req.body;
+      const user = await User.findById(userId);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Access Denied" });
+      }
+
+      const newCurated = new Playlist({
+        name: name || "Curated Edition Mix",
+        createdBy: userId,
+        isReadyMade: true,
+        category: category || "Featured",
+        songIds: []
+      });
+
+      const saved = await newCurated.save();
+      res.status(201).json(saved);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- ADMIN ONLY: BUNDLE BULK tracks INTO INSTANT READY-MADE PLAYLIST ---
+  app.post('/api/playlists/bulk-curate', async (req, res) => {
+    try {
+      const { playlistName, songIds, userId } = req.body;
+      const user = await User.findById(userId);
+      if (!user || user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+
+      const bulkPlaylist = new Playlist({
+        name: playlistName || "Bulk Curated Release",
+        createdBy: userId,
+        isReadyMade: true,
+        songIds: songIds, // Maps all freshly uploaded track IDs here
+        playlistCover: "/Groove.png"
+      });
+
+      await bulkPlaylist.save();
+      res.status(201).json(bulkPlaylist);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

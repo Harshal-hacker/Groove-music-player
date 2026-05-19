@@ -16,16 +16,26 @@ const playlistSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Song' 
   }],
-  // DISTINCTION: true for Bollywood/Bhim lists, false for user lists
-  isReadyMade: { 
-    type: Boolean, 
-    default: false 
-  }, 
   // Branding
   playlistCover: { 
     type: String, 
     default: "/Groove.png" 
-  }
+  },
+  // true = visible to everyone on Home screen
+  isReadyMade: { 
+    type: Boolean, 
+    default: false 
+  }, 
+  // e.g., 'Romantic', 'Pop', 'Classical'
+  category: { 
+    type: String, 
+    default: 'All' 
+  },
+  // Users who added this to their library     
+  followers: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  }] 
 }, { timestamps: true }); // Keep timestamps to show "Recently Created" lists
 
 module.exports = mongoose.model('Playlist', playlistSchema);

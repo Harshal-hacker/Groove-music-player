@@ -1593,3 +1593,33 @@ h1, h2, h3, h4 {
     opacity: 1;
   }
 }
+
+/* Curated Bento Deck Micro-Interactions */
+.curated-bento-card:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+  transform: translateY(-6px);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(16, 185, 129, 0.05) !important;
+}
+
+/* Initially hide play bubble until hover state triggers */
+.curated-hover-overlay {
+  opacity: 0;
+}
+
+.curated-bento-card:hover .curated-hover-overlay {
+  opacity: 1;
+}
+
+.curated-bento-card:hover .curated-play-bubble {
+  transform: translateY(0) scale(1.05) !important;
+}
+
+.curated-bento-card:hover .curated-art-wrapper img {
+  transform: scale(1.08);
+}
+
+.curated-play-bubble:hover {
+  transform: scale(1.15) !important;
+  background-color: #34d399 !important;
+}
