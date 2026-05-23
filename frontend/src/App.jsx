@@ -1381,19 +1381,19 @@ function App() {
         <main style={{ 
           flex: 1, overflowY: 'auto', backgroundColor: 'rgba(255,255,255,0.01)', backdropFilter: 'blur(20px)',
           borderRadius: '28px', border: '1px solid rgba(255,255,255,0.05)', padding: '40px' 
-        }} className="bento-scrollbar">
-          {/*onContextMenu={(e) => {
+        }} className="bento-scrollbar"
+          onContextMenu={(e) => {
             const isClickingCard = e.target.closest('.curated-bento-card') || 
                                   e.target.closest('.advanced-music-card') || 
                                   e.target.closest('.groove-track-card') || 
                                   e.target.closest('.glass-context-menu');
             // Only intercept if we are on the default home screen view context
-            if (activeCategory === 'All' && !selectedPlaylist && isAdmin) {
+            if (activeCategory === 'All' && !selectedPlaylist && isAdmin && !isClickingCard) {
               e.preventDefault();
               handleContextMenu(e, 'home-canvas', 'canvas');
             }
           }}
-        >*/}
+        >
           {activeCategory === 'All' && !selectedPlaylist ? (
             <>
             {/* --- NEW READY-MADE SHELF --- */}
