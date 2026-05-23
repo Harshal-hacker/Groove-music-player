@@ -1623,3 +1623,22 @@ h1, h2, h3, h4 {
   transform: scale(1.15) !important;
   background-color: #34d399 !important;
 }
+
+.shelf-hover-btn {
+  opacity: 0 !important;
+  transform: scale(0.8) translateY(0px);
+}
+
+/* When mouse enters the parent wrapper canvas context area, reveal the edge tools */
+.curated-shelf-wrapper:hover .shelf-hover-btn {
+  opacity: 1 !important;
+  transform: scale(1) translateY(0px);
+}
+
+/* Light up glow effect when hovering directly on the button circles */
+.shelf-hover-btn:hover {
+  background-color: #10b981 !important;
+  color: #000000 !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.6) !important;
+  border-color: #10b981 !important;
+}

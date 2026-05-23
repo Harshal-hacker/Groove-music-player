@@ -24,6 +24,7 @@ function App() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   const avatarRef = useRef(null);
+  const curatedShelfRef = useRef(null);
   const [showLoginTooltip, setShowLoginTooltip] = useState(false);
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('role') === 'admin'); 
   // --- Player State ---
@@ -1394,419 +1395,406 @@ function App() {
             }
           }}
         >
-          {activeCategory === 'All' && !selectedPlaylist ? (
-            <>
-            {/* --- NEW READY-MADE SHELF --- */}
-            {readyMadePlaylists.length > 0 && (
-              <div style={{ marginBottom: '45px', paddingBottom: '10px' }}>
-                <p style={{ 
-                  fontSize: '11px', 
-                  fontWeight: '900', 
-                  opacity: 0.5, 
-                  letterSpacing: '2.5px', 
-                  color: '#10b981', 
-                  marginBottom: '20px' 
-                }}>
-                  EXCLUSIVELY CURATED MIXES
-                </p>
-                
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '24px', 
-                  overflowX: 'auto', 
-                  paddingBottom: '20px' 
-                }} className="bento-scrollbar">
-                  {readyMadePlaylists.map(pl => {
-                    // Look up if the active user is already following this deck collection
-                    const isFollowed = pl.followers?.includes(localStorage.getItem('userId'));
+          {/* ========================================================================= */}
+          {/* DYNAMIC CATEGORIZED SHELF GROUPS (JIOSAAVN STYLE) */}
+          {/* ========================================================================= */}
+          {activeCategory === 'All' && !selectedPlaylist && (
+            (() => {
+              // 1. Extract all unique category groups present in your ready-made cloud data
+              const categories = [...new Set(readyMadePlaylists.map(pl => pl.category || 'Featured'))];
 
-                    return (
-                      <div 
-                        key={pl._id} 
-                        onClick={() => setSelectedPlaylist(pl._id)}
-                        className="curated-bento-card" 
-                        style={{ 
-                          minWidth: '210px', 
-                          maxWidth: '210px',
-                          cursor: 'pointer', 
-                          padding: '16px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                          backdropFilter: 'blur(20px)',
-                          borderRadius: '24px',
-                          border: '1px solid rgba(255, 255, 255, 0.04)',
-                          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
-                          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                          position: 'relative'
-                        }}
-                      >
-                        {/* COMPACT FLOATING CATEGORY BADGE */}
-                        <span style={{
-                          position: 'absolute',
-                          top: '24px',
-                          left: '24px',
-                          zIndex: 10,
-                          backgroundColor: 'rgba(10, 10, 15, 0.75)',
-                          backdropFilter: 'blur(10px)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          color: '#10b981',
-                          fontSize: '9px',
-                          fontWeight: '900',
-                          padding: '4px 10px',
-                          borderRadius: '50px',
-                          letterSpacing: '0.5px'
-                        }}>
-                          {pl.category ? pl.category.toUpperCase() : 'MIX'}
-                        </span>
+              return categories.map(categoryName => {
+                // 2. Filter out the specific playlists belonging exclusively to this loop's shelf
+                const categoryPlaylists = readyMadePlaylists.filter(pl => (pl.category || 'Featured') === categoryName);
+                if (categoryPlaylists.length === 0) return null;
 
-                        {/* ART WORK CONTAINER WITH OVERLAY TRIGGERS */}
-                        <div className="curated-art-wrapper" style={{ 
-                          width: '100%', 
-                          aspectRatio: '1/1', 
-                          borderRadius: '16px', 
-                          overflow: 'hidden', 
-                          marginBottom: '16px',
-                          position: 'relative',
-                          boxShadow: '0 12px 24px rgba(0,0,0,0.5)'
-                        }}>
-                          <img 
-                            src={pl.playlistCover || "/Groove.png"} 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)' }} 
-                            alt={pl.name} 
-                          />
-                          
-                          {/* FIXED HOVER HUD DECK ICON OVERLAY */}
-                          <div className="curated-hover-overlay" style={{
-                            position: 'absolute',
-                            inset: 0,
-                            background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 100%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'opacity 0.3s ease'
-                          }}>
-                            <div style={{
-                              width: '46px',
-                              height: '46px',
-                              backgroundColor: '#10b981',
-                              borderRadius: '50%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)',
-                              transform: 'translateY(10px)',
-                              transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-                            }} className="curated-play-bubble">
-                              <Play size={20} fill="black" color="black" style={{ marginLeft: '2px' }} />
-                            </div>
-                          </div>
-                        </div>
+                // 3. Create a clean, unique React ref id for each horizontal shelf row container
+                const shelfId = `shelf-${categoryName.replace(/\s+/g, '-').toLowerCase()}`;
 
-                        {/* DESCRIPTION META FRAME */}
-                        <div style={{ padding: '0 2px' }}>
-                          <h4 style={{ 
-                            fontSize: '15px', 
-                            fontWeight: '800', 
-                            margin: '0 0 6px 0',
-                            color: '#fff',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>
-                            {pl.name}
-                          </h4>
-                          
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <p style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', margin: 0 }}>
-                              {pl.songIds?.length || 0} Tracks
-                            </p>
-                            
-                            {isFollowed && (
-                              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: '800' }}>
-                                SAVED
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                // Reusable scroll action handler scoped directly to the dynamic shelf rows
+                const scrollShelf = (direction) => {
+                  const shelfElement = document.getElementById(shelfId);
+                  if (shelfElement) {
+                    const offset = direction === 'left' ? -360 : 360;
+                    shelfElement.scrollBy({ left: offset, behavior: 'smooth' });
+                  }
+                };
 
-            <div style={{ marginBottom: '50px' }}>
-              <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>ALL SONGS</span>
-            </div>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', // Increased for better readability
-              gap: '20px', // More breathing room
-              paddingBottom: '40px'
-            }}>
-              {filteredPlaylist.map((track) => {
-                const displayCover = track.cover || "/Groove.png";
-                const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
-                
                 return (
-                  <div 
-                    key={track._id}  
-                    className={`advanced-music-card ${isActive ? 'active' : ''}`}
-                    onClick={() => { 
-                      setPlaybackContext(filteredPlaylist);
-                      setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
-                      setIsPlaying(true); 
-                    }}
-                    onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
-
-                    style={{ 
-                      cursor: 'pointer', 
-                      padding: '16px', 
-                      backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', 
-                      borderRadius: '20px', 
-                      border: isActive ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.05)', 
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      position: 'relative'
-                    }}
-                  >
-                    {/* IMAGE CONTAINER */}
-                    <div style={{ 
-                      position: 'relative', 
-                      borderRadius: '14px', 
-                      overflow: 'hidden', 
-                      aspectRatio: '1/1', 
-                      boxShadow: '0 12px 24px rgba(0,0,0,0.3)',
-                      marginBottom: '16px'
-                    }}>
-                      <img 
-                        src={track.cover} 
-                        alt={track.title} 
-                        onError={(e) => {
-                          e.target.onerror = null; // Prevents infinite loops
-                          e.target.src = "/Groove.png"; // Path to your GROOVE logo
-                        }}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} 
-                        className="card-img"
-                      />
-                      
-                      {/* OVERLAY PLAY BUTTON (Appears on hover or if active) */}
-                      <div className="card-overlay" style={{
-                        position: 'absolute',
-                        inset: 0,
-                        backgroundColor: 'rgba(0,0,0,0.4)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        opacity: isActive ? 1 : 0,
-                        transition: '0.3s ease',
-                        backdropFilter: 'blur(4px)'
+                  <div key={categoryName} style={{ marginBottom: '50px', position: 'relative' }} className="jio-shelf-group">
+                    
+                    {/* CATEGORY TEXT HEADER WITH HOVER CHEVRON PAGINATION UNIT */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ 
+                        fontSize: '20px', 
+                        fontWeight: '800', 
+                        letterSpacing: '-0.5px', 
+                        color: '#fff',
+                        margin: 0 
                       }}>
-                        <div style={{ 
-                          width: '48px', height: '48px', backgroundColor: '#10b981', 
-                          borderRadius: '50%', display: 'flex', alignItems: 'center', 
-                          justifyContent: 'center', boxShadow: '0 8px 15px rgba(16, 185, 129, 0.4)' 
-                        }}>
-                          {isActive ? <Pause size={24} fill="white" color="white" /> : <Play size={24} fill="white" color="white" style={{marginLeft: '3px'}} />}
-                        </div>
+                        {categoryName}
+                      </h3>
+
+                      {/* NAV CONTROL ACTION BUTTONS */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={() => scrollShelf('left')}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)',
+                            color: '#fff', borderRadius: '50%', width: '32px', height: '32px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s'
+                          }}
+                        >
+                          <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
+                        </button>
+                        <button 
+                          onClick={() => scrollShelf('right')}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)',
+                            color: '#fff', borderRadius: '50%', width: '32px', height: '32px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s'
+                          }}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
                       </div>
                     </div>
 
-                    {/* TEXT INFO */}
-                    <div style={{ padding: '0 4px' }}>
-                      <h4 style={{ 
-                        fontSize: '15px', 
-                        fontWeight: '800', 
-                        color: isActive ? '#10b981' : '#fff',
-                        margin: 0,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                      }}>
-                        {track.title}
-                      </h4>
-                      <p style={{ 
-                        fontSize: '13px', 
-                        color: '#64748b', 
-                        marginTop: '6px', 
-                        fontWeight: '600',
-                        margin: '4px 0 0'
-                      }}>
-                        {track.artist}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          /* --- 2. PLAYLIST LOOK: GROOVE DECK --- */
-          <div className="groove-playlist-wrapper">
-            <div className="groove-header-deck">
-              <div className="deck-main-card">
-                <div className="deck-art-frame">
-                  <img 
-                    /* If the playlist is empty, it uses the logo immediately */
-                    src={filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png"} 
-                    alt="Playlist Art" 
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "/Groove.png";
-                    }}
-                  />
-                </div>
-                <div className="deck-details">
-                  <span className="deck-badge">DIGITAL COLLECTION</span>
-                  {isEditingName ? (
-                    <input
-                      autoFocus
-                      className="deck-title-text inline-edit-input"
-                      value={tempName}
-                      onChange={(e) => setTempName(e.target.value)}
-                      onBlur={handleInlineRename}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleInlineRename();
-                        if (e.key === 'Escape') setIsEditingName(false);
-                      }}
-                      style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid #10b981',
-                        color: 'white',
-                        width: '50%',
-                        outline: 'none',
-                        borderRadius: '8px',
-                        padding: '0 10px'
-                      }}
-                    />
-                  ) : (
-                    <h1 className="deck-title-text">
-                      {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
-                    </h1>
-                  )}
-                
-                  <div className="deck-info-row">
-                    <div className="deck-stat"><span>{filteredPlaylist.length}</span> TRACKS</div>
-                    <div className="deck-stat"><span>{Math.floor(filteredPlaylist.length * 3.5 / 60)}H</span> DURATION</div>
-                  </div>
-
-                  {/* Merged Action Unit */}
-                  <div className="groove-action-unit" style={{ marginTop: '25px', paddingLeft: '0', background: 'transparent', border: 'none' }}>
-                    <button 
-                      className="groove-play-btn" 
-                      onClick={() => {
-                        // Check if the current playing song is actually in this playlist
-                        const isCurrentTrackInView = filteredPlaylist.some(s => s._id === currentTrack?._id);
-                        
-                        if (!isPlaying || !isCurrentTrackInView) {
-                          // If not playing, or playing a different playlist, start the first song of THIS list
-                          if (filteredPlaylist.length > 0) {
-                            const firstSongGlobalIndex = playlist.findIndex(s => s._id === filteredPlaylist[0]._id);
-                            setCurrentTrackIndex(firstSongGlobalIndex);
-                            setIsPlaying(true);
-                          }
-                        } else {
-                          // If already playing from this list, just pause/resume
-                          togglePlayPause();
-                        }
+                    {/* HORIZONTAL CONTINUOUS SHELF RAIL */}
+                    <div 
+                      id={shelfId}
+                      style={{ 
+                        display: 'flex', 
+                        gap: '20px', 
+                        overflowX: 'hidden', 
+                        scrollBehavior: 'smooth',
+                        padding: '4px 0'
                       }}
                     >
-                      {/* Show Pause icon only if playing AND the song is part of this playlist pool */}
-                      {isPlaying && filteredPlaylist.some(s => s._id === currentTrack?._id) ? (
-                        <Pause size={28} fill="white" />
-                      ) : (
-                        <Play size={28} fill="white" style={{marginLeft: '4px'}} />
-                      )}
-                    </button>
+                      {categoryPlaylists.map(pl => {
+                        const isFollowed = pl.followers?.includes(localStorage.getItem('userId'));
 
-                    <Shuffle size={24} className="groove-utility" color={isShuffle ? '#10b981' : '#444'} onClick={() => setIsShuffle(!isShuffle)} />
-                    {/* <PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />*/}
-                    {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
-                      <button
-                        onClick={async () => {
-                          const userId = localStorage.getItem('userId');
-                          if (!userId) return alert("Please log in to save playlists!");
+                        return (
+                          <div 
+                            key={pl._id} 
+                            onClick={() => setSelectedPlaylist(pl._id)}
+                            className="curated-bento-card" 
+                            style={{ 
+                              minWidth: '160px', 
+                              maxWidth: '160px',
+                              cursor: 'pointer', 
+                              padding: '12px',
+                              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                              backdropFilter: 'blur(20px)',
+                              borderRadius: '16px',
+                              border: '1px solid rgba(255, 255, 255, 0.04)',
+                              boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              position: 'relative'
+                            }}
+                          >
+                            {/* DECK ARTWORK CONTAINER */}
+                            <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
+                              <img src={pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} />
+                              <div className="curated-hover-overlay" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s ease' }}>
+                                <div style={{ width: '36px', height: '36px', backgroundColor: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="curated-play-bubble">
+                                  <Play size={16} fill="black" color="black" style={{ marginLeft: '2px' }} />
+                                </div>
+                              </div>
+                            </div>
 
-                          try {
-                            const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ userId })
-                            });
+                            {/* METADATA FRAME */}
+                            <div style={{ padding: '0 2px' }}>
+                              <h4 style={{ fontSize: '13px', fontWeight: '700', margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {pl.name}
+                              </h4>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <p style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', margin: 0 }}>
+                                  {pl.songIds?.length || 0} Tracks
+                                </p>
+                                {isFollowed && <span style={{ fontSize: '9px', color: '#10b981', fontWeight: '800' }}>SAVED</span>}
+                              </div>
+                            </div>
 
-                            if (res.ok) {
-                              const updatedPlaylist = await res.json();
-                              // Force a state map update so the sidebar re-renders instantly
-                              setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
-                              
-                              const isSaved = updatedPlaylist.followers?.includes(userId);
-                              setToast({
-                                message: isSaved ? "Added collection to your library!" : "Removed collection from library.",
-                                type: 'success'
-                              });
-                              setTimeout(() => setToast(null), 3000);
-                            }
-                          } catch (err) {
-                            console.error("Library operational error:", err);
-                          }
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+                );
+              });
+            })()
+          )}
+
+          {activeCategory === 'All' && !selectedPlaylist && (
+            <>
+              <div style={{ marginBottom: '50px' }}>
+                <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>ALL SONGS</span>
+              </div>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', 
+                gap: '20px', 
+                paddingBottom: '40px'
+              }}>
+                {filteredPlaylist.map((track) => {
+                  const displayCover = track.cover || "/Groove.png";
+                  const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
+                  
+                  return (
+                    <div 
+                      key={track._id}  
+                      className={`advanced-music-card ${isActive ? 'active' : ''}`}
+                      onClick={() => { 
+                        setPlaybackContext(filteredPlaylist);
+                        setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
+                        setIsPlaying(true); 
+                      }}
+                      onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
+
+                      style={{ 
+                        cursor: 'pointer', 
+                        padding: '16px', 
+                        backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', 
+                        borderRadius: '20px', 
+                        border: isActive ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.05)', 
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        position: 'relative'
+                      }}
+                    >
+                      {/* IMAGE CONTAINER */}
+                      <div style={{ 
+                        position: 'relative', 
+                        borderRadius: '14px', 
+                        overflow: 'hidden', 
+                        aspectRatio: '1/1', 
+                        boxShadow: '0 12px 24px rgba(0,0,0,0.3)',
+                        marginBottom: '16px'
+                      }}>
+                        <img 
+                          src={track.cover} 
+                          alt={track.title} 
+                          onError={(e) => {
+                            e.target.onerror = null; 
+                            e.target.src = "/Groove.png"; 
+                          }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} 
+                          className="card-img"
+                        />
+                        
+                        {/* OVERLAY PLAY BUTTON */}
+                        <div className="card-overlay" style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(0,0,0,0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: isActive ? 1 : 0,
+                          transition: '0.3s ease',
+                          backdropFilter: 'blur(4px)'
+                        }}>
+                          <div style={{ 
+                            width: '48px', height: '48px', backgroundColor: '#10b981', 
+                            borderRadius: '50%', display: 'flex', alignItems: 'center', 
+                            justifyContent: 'center', boxShadow: '0 8px 15px rgba(16, 185, 129, 0.4)' 
+                          }}>
+                            {isActive ? <Pause size={24} fill="white" color="white" /> : <Play size={24} fill="white" color="white" style={{marginLeft: '3px'}} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* TEXT INFO */}
+                      <div style={{ padding: '0 4px' }}>
+                        <h4 style={{ 
+                          fontSize: '15px', 
+                          fontWeight: '800', 
+                          color: isActive ? '#10b981' : '#fff',
+                          margin: 0,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {track.title}
+                        </h4>
+                        <p style={{ 
+                          fontSize: '13px', 
+                          color: '#64748b', 
+                          marginTop: '6px', 
+                          fontWeight: '600',
+                          margin: '4px 0 0'
+                        }}>
+                          {track.artist}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* --- 2. PLAYLIST LOOK: GROOVE DECK --- */}
+          {activeCategory !== 'All' || selectedPlaylist ? (
+            <div className="groove-playlist-wrapper">
+              <div className="groove-header-deck">
+                <div className="deck-main-card">
+                  <div className="deck-art-frame">
+                    <img 
+                      src={filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png"} 
+                      alt="Playlist Art" 
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = "/Groove.png";
+                      }}
+                    />
+                  </div>
+                  <div className="deck-details">
+                    <span className="deck-badge">DIGITAL COLLECTION</span>
+                    {isEditingName ? (
+                      <input
+                        autoFocus
+                        className="deck-title-text inline-edit-input"
+                        value={tempName}
+                        onChange={(e) => setTempName(e.target.value)}
+                        onBlur={handleInlineRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleInlineRename();
+                          if (e.key === 'Escape') setIsEditingName(false);
                         }}
                         style={{
                           background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          color: '#fff',
-                          padding: '8px 18px',
-                          borderRadius: '50px',
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          cursor: 'pointer',
-                          transition: '0.2s',
-                          marginLeft: '10px'
+                          border: '1px solid #10b981',
+                          color: 'white',
+                          width: '50%',
+                          outline: 'none',
+                          borderRadius: '8px',
+                          padding: '0 10px'
                         }}
-                        onMouseOver={(e) => e.currentTarget.style.borderColor = '#10b981'}
-                        onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
-                      >
-                        {userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(localStorage.getItem('userId')) 
-                          ? "REMOVE FROM LIBRARY" 
-                          : "SAVE TO LIBRARY"}
-                      </button>
+                      />
+                    ) : (
+                      <h1 className="deck-title-text">
+                        {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
+                      </h1>
                     )}
+                  
+                    <div className="deck-info-row">
+                      <div className="deck-stat"><span>{filteredPlaylist.length}</span> TRACKS</div>
+                      <div className="deck-stat"><span>{Math.floor(filteredPlaylist.length * 3.5 / 60)}H</span> DURATION</div>
+                    </div>
 
-                    {/*<PlusCircle size={24} className="groove-utility" color="#444" onClick={() => setIsPlaylistModalOpen(true)} />*/}
+                    {/* Merged Action Unit */}
+                    <div className="groove-action-unit" style={{ marginTop: '25px', paddingLeft: '0', background: 'transparent', border: 'none' }}>
+                      <button 
+                        className="groove-play-btn" 
+                        onClick={() => {
+                          const isCurrentTrackInView = filteredPlaylist.some(s => s._id === currentTrack?._id);
+                          
+                          if (!isPlaying || !isCurrentTrackInView) {
+                            if (filteredPlaylist.length > 0) {
+                              const firstSongGlobalIndex = playlist.findIndex(s => s._id === filteredPlaylist[0]._id);
+                              setCurrentTrackIndex(firstSongGlobalIndex);
+                              setIsPlaying(true);
+                            }
+                          } else {
+                            togglePlayPause();
+                          }
+                        }}
+                      >
+                        {isPlaying && filteredPlaylist.some(s => s._id === currentTrack?._id) ? (
+                          <Pause size={28} fill="white" />
+                        ) : (
+                          <Play size={28} fill="white" style={{marginLeft: '4px'}} />
+                        )}
+                      </button>
+
+                      <Shuffle size={24} className="groove-utility" color={isShuffle ? '#10b981' : '#444'} onClick={() => setIsShuffle(!isShuffle)} />
+                      {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
+                        <button
+                          onClick={async () => {
+                            const userId = localStorage.getItem('userId');
+                            if (!userId) return alert("Please log in to save playlists!");
+
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ userId })
+                              });
+
+                              if (res.ok) {
+                                const updatedPlaylist = await res.json();
+                                setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
+                                
+                                const isSaved = updatedPlaylist.followers?.includes(userId);
+                                setToast({
+                                  message: isSaved ? "Added collection to your library!" : "Removed collection from library.",
+                                  type: 'success'
+                                });
+                                setTimeout(() => setToast(null), 3000);
+                              }
+                            } catch (err) {
+                              console.error("Library operational error:", err);
+                            }
+                          }}
+                          style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: '#fff',
+                            padding: '8px 18px',
+                            borderRadius: '50px',
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            transition: '0.2s',
+                            marginLeft: '10px'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.borderColor = '#10b981'}
+                          onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
+                        >
+                          {userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(localStorage.getItem('userId')) 
+                            ? "REMOVE FROM LIBRARY" 
+                            : "SAVE TO LIBRARY"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="groove-tracklist">
-              {filteredPlaylist.map((track, index) => {
-                const displayCover = track.cover || "/Groove.png";
-                const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
-                return (
-                  <div 
-                    key={`${track._id}-${index}`}
-                    className={`groove-track-card ${isActive ? 'active' : ''}`}
-                    onClick={() => { setPlaybackContext(filteredPlaylist); setCurrentTrackIndex(filteredPlaylist.findIndex(p => p._id === track._id)); setIsPlaying(true); }}
-                    onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
-                  >
-                    <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
-                    <img 
-                      src={displayCover} // USE THE VARIABLE HERE
-                      className="track-thumb" 
-                      alt="" 
-                      onError={(e) => { e.target.src = "/Groove.png"; }}
-                    />
-                    <div className="track-meta">
-                      <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
-                      <div className="track-artist-sub">{track.artist}</div>
+              <div className="groove-tracklist">
+                {filteredPlaylist.map((track, index) => {
+                  const displayCover = track.cover || "/Groove.png";
+                  const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
+                  return (
+                    <div 
+                      key={`${track._id}-${index}`}
+                      className={`groove-track-card ${isActive ? 'active' : ''}`}
+                      onClick={() => { setPlaybackContext(filteredPlaylist); setCurrentTrackIndex(filteredPlaylist.findIndex(p => p._id === track._id)); setIsPlaying(true); }}
+                      onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
+                    >
+                      <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
+                      <img 
+                        src={displayCover} 
+                        className="track-thumb" 
+                        alt="" 
+                        onError={(e) => { e.target.src = "/Groove.png"; }}
+                      />
+                      <div className="track-meta">
+                        <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
+                        <div className="track-artist-sub">{track.artist}</div>
+                      </div>
+                      <div className="track-time">{formatTime(track.duration)}</div>
+                      <div className="track-action-indicator">
+                        {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : <ChevronRight size={16} color="#333" />}
+                      </div>
                     </div>
-                    <div className="track-time">{formatTime(track.duration)}</div>
-                    <div className="track-action-indicator">
-                      {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : <ChevronRight size={16} color="#333" />}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          ) : null}
+        </main>
         
         {/* THE RIGHT SIDE QUEUE BOX */}
         <aside style={{
@@ -2284,20 +2272,24 @@ function App() {
                 style={{ color: '#10b981' }}
                 onClick={async () => {
                   const userId = localStorage.getItem('userId');
-                  const name = prompt("Enter a name for this Curated Home Playlist:");
-                  setContextMenu(null);
+                  const name = prompt("Enter a name for this Playlist:");
                   if (!name) return;
+                  
+                  // NEW: Prompts admin to assign a grouping category folder context structure
+                  const category = prompt("Enter Category Group (e.g., Trending Now, Top Charts, New Releases, Editorial Picks):", "Trending Now");
+                  setContextMenu(null);
+                  if (!category) return;
 
                   try {
                     const res = await fetch(`${API_BASE_URL}/api/playlists/curated`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name, userId, category: 'Featured' })
+                      body: JSON.stringify({ name, userId, category: category.trim() })
                     });
                     if (res.ok) {
                       const newCuratedDeck = await res.json();
                       setUserPlaylists(prev => [...prev, newCuratedDeck]);
-                      setToast({ message: `"${name}" Curated Dashboard Deck Launched!`, type: 'success' });
+                      setToast({ message: `"${name}" added to "${category}" shelf!`, type: 'success' });
                       setTimeout(() => setToast(null), 3000);
                     }
                   } catch (err) {
