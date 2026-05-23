@@ -4,7 +4,7 @@
   const mongoose = require('mongoose');
 
   const app = express();
-  const corsOptions = {
+  {/*const corsOptions = {
     origin: [
       'http://localhost:5173',                  // Your local React app
       'https://your-groove-frontend.onrender.com', // YOUR LIVE FRONTEND LINK
@@ -12,7 +12,13 @@
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
-  };
+  };*/}
+
+  const corsOptions = {
+  origin: true, // Dynamically accepts your live deployed frontend URL
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true,
+};
 
   app.use(cors(corsOptions));
   app.use(express.json({ limit: '100mb' }));
