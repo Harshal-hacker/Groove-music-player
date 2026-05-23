@@ -52,7 +52,7 @@ function SignUp({ onBackToLogin, onBackToPlayer }) {
 
       <div className="auth-visual-side" style={{ flex: 1.2, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end', padding: '60px' }}>
         <img 
-          src="https://res.cloudinary.com/ducrlh5lv/image/upload/v1776364497/SignUp_vcj8qg.avif" 
+          src="https://res.cloudinary.com/ducrlh5lv/image/upload/v1779566952/SignUp_wbegl8.avif" 
           alt="Music Background"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5, zIndex: 1 }}
         />

@@ -62,7 +62,7 @@ function Login({ onBackToSignup, onLoginSuccess, onBackToPlayer }) {
       }}>
         <div style={{ 
           position: 'absolute', inset: 0, 
-          background: 'linear-gradient(rgba(0,0,0,0.3), #000), url("https://res.cloudinary.com/ducrlh5lv/image/upload/v1776364180/Login_Page_dzehrv.png")', 
+          background: 'linear-gradient(rgba(0,0,0,0.3), #000), url("https://res.cloudinary.com/ducrlh5lv/image/upload/v1779566951/Login_Page_fuexbz.png")', 
           backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5 
         }} />
         

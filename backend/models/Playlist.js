@@ -38,4 +38,4 @@ const playlistSchema = new mongoose.Schema({
   }] 
 }, { timestamps: true }); // Keep timestamps to show "Recently Created" lists
 
-module.exports = mongoose.model('Playlist', playlistSchema);
+module.exports = mongoose.model('Playlist', playlistSchema, 'playlists');
