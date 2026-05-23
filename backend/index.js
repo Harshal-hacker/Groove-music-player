@@ -292,6 +292,53 @@
   // C. Keep your Playlist routes below the song routes
 
   // Get all playlists
+
+  // --- ADMIN ONLY: CREATE DIRECT CURATED READY-MADE PLAYLIST CONTAINER ---
+  app.post('/api/playlists/curated', async (req, res) => {
+    try { 
+      const { name, userId, category } = req.body;
+      const user = await User.findById(userId);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Access Denied" });
+      }
+
+      const newCurated = new Playlist({
+        name: name || "Curated Edition Mix",
+        createdBy: userId,
+        isReadyMade: true,
+        category: category || "Featured",
+        songIds: []
+      });
+
+      const saved = await newCurated.save();
+      res.status(201).json(saved);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- ADMIN ONLY: BUNDLE BULK tracks INTO INSTANT READY-MADE PLAYLIST ---
+  app.post('/api/playlists/bulk-curate', async (req, res) => {
+    try {
+      const { playlistName, songIds, userId } = req.body;
+      const user = await User.findById(userId);
+      if (!user || user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+
+      const bulkPlaylist = new Playlist({
+        name: playlistName || "Bulk Curated Release",
+        createdBy: userId,
+        isReadyMade: true,
+        songIds: songIds, // Maps all freshly uploaded track IDs here
+        playlistCover: "/Groove.png"
+      });
+
+      await bulkPlaylist.save();
+      res.status(201).json(bulkPlaylist);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/playlists', async (req, res) => {
     const { userId } = req.query;
     
@@ -440,52 +487,6 @@
     } catch (err) {
       console.error("Library sync failure:", err);
       res.status(500).json({ message: err.message });
-    }
-  });
-
-  // --- ADMIN ONLY: CREATE DIRECT CURATED READY-MADE PLAYLIST CONTAINER ---
-  app.post('/api/playlists/curated', async (req, res) => {
-    try { 
-      const { name, userId, category } = req.body;
-      const user = await User.findById(userId);
-      if (!user || user.role !== 'admin') {
-        return res.status(403).json({ message: "Access Denied" });
-      }
-
-      const newCurated = new Playlist({
-        name: name || "Curated Edition Mix",
-        createdBy: userId,
-        isReadyMade: true,
-        category: category || "Featured",
-        songIds: []
-      });
-
-      const saved = await newCurated.save();
-      res.status(201).json(saved);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // --- ADMIN ONLY: BUNDLE BULK tracks INTO INSTANT READY-MADE PLAYLIST ---
-  app.post('/api/playlists/bulk-curate', async (req, res) => {
-    try {
-      const { playlistName, songIds, userId } = req.body;
-      const user = await User.findById(userId);
-      if (!user || user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
-
-      const bulkPlaylist = new Playlist({
-        name: playlistName || "Bulk Curated Release",
-        createdBy: userId,
-        isReadyMade: true,
-        songIds: songIds, // Maps all freshly uploaded track IDs here
-        playlistCover: "/Groove.png"
-      });
-
-      await bulkPlaylist.save();
-      res.status(201).json(bulkPlaylist);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
     }
   });
 
