@@ -298,25 +298,30 @@
     try {
       let queryCondition = {};
 
-      // If a user is logged in, pull their items + curated items. 
-      // If a guest is browsing (no userId), ONLY pull curated ready-made items safely!
-      if (userId && userId !== 'null' && userId !== 'undefined') {
+      // Robust check to determine if a real user ID context exists
+      const hasValidUser = userId && 
+                           userId !== 'null' && 
+                           userId !== 'undefined' && 
+                           userId.trim() !== '';
+
+      if (hasValidUser) {
         queryCondition = {
           $or: [
             { createdBy: userId },
             { followers: userId },
-            { isReadyMade: true }
+            { isReadyMade: true } // Fetches curated content for logged-in accounts
           ]
         };
       } else {
+        // Strict fallback for guest users browsing your production build
         queryCondition = { isReadyMade: true };
       }
 
       const playlists = await Playlist.find(queryCondition).populate('songIds');
       res.status(200).json(playlists);
     } catch (err) {
-      console.error("Critical Playlist Database Engine Failure:", err);
-      res.status(500).json({ message: "Internal server error fetching playlist collections." });
+      console.error("Critical Playlist Fetch Error:", err);
+      res.status(500).json({ message: "Internal server error fetching collections." });
     }
   });
 
