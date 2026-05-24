@@ -83,21 +83,32 @@ app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' 
   try {
     const { title, artist, duration, userId } = req.body;
 
-    // Admin authorization validation check logic
+    // 1. ADMIN CHECK
     const user = await User.findById(userId);
     if (!user || user.role !== 'admin') {
       return res.status(403).json({ message: "Access Denied" });
     }
 
-    // Duplicate tracking item checker
-    const existingSong = await Song.findOne({ title, artist });
+    // 2. STRICTOR DUPLICATE CHECK
+    // If a song with the same title and artist exists, return it immediately instead of re-uploading
+    const existingSong = await Song.findOne({ 
+      title: { $regex: new RegExp(`^${title.trim()}$`, 'i') }, 
+      artist: { $regex: new RegExp(`^${artist.trim()}$`, 'i') } 
+    });
+
     if (existingSong) {
+      console.log(`♻️ Duplicate song found: "${title}" by ${artist}. Using existing record.`);
       return res.status(200).json(existingSong); 
     }
 
+    // 3. CREATE NEW IF NOT FOUND
+    if (!req.files['audio']) {
+      return res.status(400).json({ message: "Audio file is required for new track uploads." });
+    }
+
     const newSong = new Song({
-      title,
-      artist,
+      title: title.trim(),
+      artist: artist.trim(),
       duration: duration ? parseFloat(duration) : 0, 
       src: req.files['audio'][0].path,
       cover: req.files['cover'] ? req.files['cover'][0].path : "https://res.cloudinary.com/your_cloud/image/upload/v1/Groove.png", 
