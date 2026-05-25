@@ -55,6 +55,16 @@ function App() {
   const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
   const [playbackContext, setPlaybackContext] = useState([]);
   const [toast, setToast] = useState(null);
+  // --- New Add-Track Modal States ---
+  const [showAddTrackModal, setShowAddTrackModal] = useState(false);
+  const [addTrackSearch, setAddTrackSearch] = useState('');
+  // --- Custom Confirm Dialog State ---
+  const [confirmDialog, setConfirmDialog] = useState({ 
+    isOpen: false, 
+    title: '', 
+    message: '', 
+    onConfirm: null 
+  });
 
   // --- Data Fetching Effect ---
   // App.jsx
@@ -213,31 +223,34 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenu]);
 
-  // 1. DELETE HANDLER
-  const deletePlaylist = async (id) => {
-    if (!window.confirm("Remove this playlist from your library?")) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Remove it from the sidebar list immediately
-        setUserPlaylists(prev => prev.filter(pl => pl._id !== id));
-        
-        // If the user was looking at this playlist, go back to 'All'
-        if (selectedPlaylist === id) {
-          setSelectedPlaylist(null);
-          setActiveCategory('All');
+  // 1. PLAYLIST DELETE HANDLER
+  const deletePlaylist = (id) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete Playlist",
+      message: "Are you sure you want to remove this playlist? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, { method: 'DELETE' });
+          if (response.ok) {
+            setUserPlaylists(prev => prev.filter(pl => pl._id !== id));
+            if (selectedPlaylist === id) {
+              setSelectedPlaylist(null);
+              setActiveCategory('All');
+            }
+            setContextMenu(null);
+            setToast({ message: "Playlist deleted successfully.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+          } else {
+            setToast({ message: "Failed to delete playlist.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+          }
+        } catch (error) {
+          console.error("Delete failed:", error);
         }
-        setContextMenu(null);
-      } else {
-        alert("Failed to delete playlist from server.");
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
       }
-    } catch (error) {
-      console.error("Delete failed:", error);
-    }
+    });
   };
 
   const renamePlaylist = async (id) => {
@@ -518,36 +531,36 @@ function App() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Permanent delete? This cannot be undone.")) return;
-    
-    const userId = localStorage.getItem('userId');
-    
-    try {
-      // Pass userId as a query parameter (?userId=...)
-      const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        // Clear it from the main state rendering your grid layout instantly
-        setPlaylist(prev => prev.filter(s => s._id !== id));
-        
-        // If the deleted song happens to be currently playing, safely pause the audio engine
-        if (currentTrack?._id === id) {
-          setIsPlaying(false);
-          if (audioRef.current) audioRef.current.pause();
-          setCurrentTrackIndex(0);
+  // 2. TRACK DELETE HANDLER
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete Track Permanently",
+      message: "Are you sure you want to permanently delete this track from the cloud database? This cannot be undone.",
+      onConfirm: async () => {
+        const userId = localStorage.getItem('userId');
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, { method: 'DELETE' });
+          if (res.ok) {
+            setPlaylist(prev => prev.filter(s => s._id !== id));
+            if (currentTrack?._id === id) {
+              setIsPlaying(false);
+              if (audioRef.current) audioRef.current.pause();
+              setCurrentTrackIndex(0);
+            }
+            setToast({ message: "Track removed from library.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+          } else {
+            const errorData = await res.json();
+            setToast({ message: `Error: ${errorData.message}`, type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+          }
+        } catch (err) {
+          console.error("Network error:", err);
         }
-
-        alert("Track removed from library.");
-      } else {
-        const errorData = await res.json();
-        alert(`Error: ${errorData.message}`);
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
       }
-    } catch (err) {
-      console.error("Network error during track deletion pipeline:", err);
-    }
+    });
   };
 
   const handleLogout = () => {
@@ -1354,7 +1367,7 @@ function App() {
                 {userPlaylistsOnly.length > 0 ? (
                   userPlaylistsOnly.map((pl) => (
                     <div key={pl._id} onClick={() => { setSelectedPlaylist(pl._id); setActiveCategory('All'); }}
-                    className="sidebar-playlist-item"
+                    className="sidebar-playlist-item" 
                     onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'sidebar')}
                       style={{ 
                         padding: '5px 18px', borderRadius: '15px', display: 'flex', 
@@ -1363,17 +1376,31 @@ function App() {
                         transition: '0.2s',
                         border: selectedPlaylist === pl._id ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
                       }}>
+                      
+                      {/* --- REPLACED ICON WITH DYNAMIC COVER ART --- */}
                       <div style={{ 
-                        width: '40px', height: '40px', borderRadius: '10px', 
-                        backgroundColor: selectedPlaylist === pl._id ? '#10b981' : '#222', 
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        width: '40px', height: '40px', borderRadius: '8px', 
+                        backgroundColor: '#111', display: 'flex', alignItems: 'center', 
+                        justifyContent: 'center', overflow: 'hidden', flexShrink: 0
                       }}>
-                        <Library size={18} color={selectedPlaylist === pl._id ? "#000" : "#fff"} opacity={selectedPlaylist === pl._id ? 1 : 0.5} />
+                        <img 
+                          // Intelligently grabs the 1st song's cover, or falls back to logo if empty
+                          src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} 
+                          alt="cover"
+                          onError={(e) => e.target.src = "/Groove.png"}
+                          style={{ 
+                            width: '100%', height: '100%', objectFit: 'cover', 
+                            opacity: selectedPlaylist === pl._id ? 1 : 0.7, // Dims slightly when not selected
+                            transition: '0.3s'
+                          }} 
+                        />
                       </div>
+                      
                       <span style={{ 
                         fontSize: '14px', 
                         fontWeight: '700', 
-                        color: selectedPlaylist === pl._id ? '#10b981' : '#888' 
+                        color: selectedPlaylist === pl._id ? '#10b981' : '#888',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                       }}>
                         {pl.name}
                       </span>
@@ -1508,7 +1535,15 @@ function App() {
                           >
                             {/* DECK ARTWORK CONTAINER */}
                             <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
-                              <img src={pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} />
+                              
+                              {/* --- REPLACED STATIC LOGO WITH DYNAMIC FIRST-SONG COVER --- */}
+                              <img 
+                                src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }} 
+                                alt={pl.name} 
+                                onError={(e) => e.target.src = "/Groove.png"}
+                              />
+
                               <div className="curated-hover-overlay" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s ease' }}>
                                 <div style={{ width: '36px', height: '36px', backgroundColor: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="curated-play-bubble">
                                   <Play size={16} fill="black" color="black" style={{ marginLeft: '2px' }} />
@@ -1723,6 +1758,7 @@ function App() {
                       </button>
 
                       <Shuffle size={24} className="groove-utility" color={isShuffle ? '#10b981' : '#444'} onClick={() => setIsShuffle(!isShuffle)} />
+                      
                       {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
                         <button
                           onClick={async () => {
@@ -1771,6 +1807,43 @@ function App() {
                             : "SAVE TO LIBRARY"}
                         </button>
                       )}
+
+                      {/* ========================================================= */}
+                      {/* NEW: ADMIN DEDICATED "ADD TRACKS" BUTTON */}
+                      {/* ========================================================= */}
+                      {isAdmin && selectedPlaylist && (userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade || !userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade) && (
+                        <button
+                          onClick={() => {
+                            setAddTrackSearch(''); // Clear previous searches
+                            setShowAddTrackModal(true);
+                          }}
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid #10b981',
+                            color: '#10b981',
+                            padding: '8px 18px',
+                            borderRadius: '50px',
+                            fontSize: '11px',
+                            fontWeight: '900',
+                            cursor: 'pointer',
+                            transition: '0.2s',
+                            marginLeft: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = '#10b981';
+                            e.currentTarget.style.color = '#000';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)';
+                            e.currentTarget.style.color = '#10b981';
+                          }}
+                        >
+                          <Plus size={14} /> ADD TRACKS
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1783,7 +1856,14 @@ function App() {
                     <div 
                       key={`${track._id}-${index}`}
                       className={`groove-track-card ${isActive ? 'active' : ''}`}
-                      onClick={() => { setPlaybackContext(filteredPlaylist); setCurrentTrackIndex(filteredPlaylist.findIndex(p => p._id === track._id)); setIsPlaying(true); }}
+                      onClick={() => { 
+                        setPlaybackContext(filteredPlaylist); 
+                        
+                        // FIX: Must use global 'playlist' to find the correct master index for the audio engine!
+                        setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
+                        
+                        setIsPlaying(true); 
+                      }}
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                     >
                       <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
@@ -2389,7 +2469,164 @@ function App() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* RAPID ADD TRACKS MODAL (ADMIN TOOL) */}
+      {/* ========================================================================= */}
+      {showAddTrackModal && selectedPlaylist && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '500px', height: '70vh', maxHeight: '600px',
+            backgroundColor: 'rgba(15, 15, 20, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
+          }}>
+            {/* Modal Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#fff' }}>Add Tracks to Mix</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#10b981', fontWeight: '700' }}>
+                  {userPlaylists.find(p => p._id === selectedPlaylist)?.name}
+                </p>
+              </div>
+              <button onClick={() => setShowAddTrackModal(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
 
+            {/* Modal Search Bar */}
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                <input 
+                  type="text" 
+                  placeholder="Search globally for a track..." 
+                  value={addTrackSearch}
+                  onChange={(e) => setAddTrackSearch(e.target.value)}
+                  style={{ 
+                    width: '100%', padding: '12px 12px 12px 42px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', 
+                    backgroundColor: 'rgba(0,0,0,0.4)', color: 'white', outline: 'none', fontSize: '14px'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Global Song List */}
+            <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
+              {playlist
+                .filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase()))
+                .map(song => {
+                  const targetPlaylistObj = userPlaylists.find(p => p._id === selectedPlaylist);
+                  // Check if the song is already safely inside the active playlist array
+                  const isAlreadyAdded = targetPlaylistObj?.songIds?.some(s => (s._id || s) === song._id);
+
+                  return (
+                    <div key={song._id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: '12px', marginBottom: '8px',
+                      background: 'rgba(255,255,255,0.02)', transition: '0.2s'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <img src={song.cover || "/Groove.png"} alt="" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: isAlreadyAdded ? '#10b981' : '#fff' }}>{song.title}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>{song.artist}</div>
+                        </div>
+                      </div>
+
+                      {isAlreadyAdded ? (
+                        <div style={{ padding: '6px 12px', borderRadius: '50px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '11px', fontWeight: '800' }}>
+                          ADDED
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => handleAddToPlaylist(song._id, selectedPlaylist)}
+                          style={{
+                            background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff',
+                            width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', 
+                            justifyContent: 'center', cursor: 'pointer', transition: '0.2s'
+                          }}
+                          onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = '#fff'; }}
+                        >
+                          <Plus size={16} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODERN CONFIRMATION MODAL */}
+      {/* ========================================================================= */}
+      {confirmDialog.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'ultraFade 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '400px', backgroundColor: 'rgba(15, 15, 20, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '24px',
+            padding: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+            transform: 'scale(1)', transition: 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+          }}>
+            
+            <div style={{
+              width: '60px', height: '60px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px',
+              border: '1px solid rgba(239, 68, 68, 0.2)'
+            }}>
+              <Trash2 size={28} color="#ef4444" />
+            </div>
+
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '20px', fontWeight: '800', color: '#fff', letterSpacing: '-0.5px' }}>
+              {confirmDialog.title}
+            </h3>
+            
+            <p style={{ margin: '0 0 30px 0', fontSize: '14px', color: '#94a3b8', lineHeight: '1.6', fontWeight: '600' }}>
+              {confirmDialog.message}
+            </p>
+
+            <div style={{ display: 'flex', gap: '15px', width: '100%' }}>
+              <button 
+                onClick={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: '50px', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '13px', fontWeight: '800',
+                  cursor: 'pointer', transition: '0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              >
+                CANCEL
+              </button>
+              
+              <button 
+                onClick={confirmDialog.onConfirm}
+                style={{
+                  flex: 1, padding: '12px 0', borderRadius: '50px', background: '#ef4444',
+                  border: 'none', color: '#fff', fontSize: '13px', fontWeight: '800',
+                  cursor: 'pointer', transition: '0.2s', boxShadow: '0 8px 20px rgba(239, 68, 68, 0.3)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                YES, DELETE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
     </div> // This is the closing tag for spotify-container
   )
