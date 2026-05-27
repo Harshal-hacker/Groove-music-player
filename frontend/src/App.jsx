@@ -518,42 +518,56 @@ function App() {
 };
 
   const handleNext = () => {
-    // 1. If we have manual items, play them first!
+    // 1. Queue Priority
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
-      
       if (indexInGlobal !== -1) {
+        isPlayingFromQueueRef.current = true;
         setCurrentTrackIndex(indexInGlobal);
-        setQueue(prev => prev.slice(1)); // Remove the played song from manual queue
+        setQueue(prev => prev.slice(1));
         return;
       }
     }
 
-    // 2. If Queue is empty, continue through the active playlist
+    // 2. Playlist Context
+    isPlayingFromQueueRef.current = false;
+    // Use playbackContext if it exists, otherwise fallback to all songs
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
     
-    // We use the anchor to find where to go next in the playlist
-    const nextIndexInPool = (currentIndexInPool + 1) % currentPool.length;
-    const nextSong = currentPool[nextIndexInPool];
-    const globalIndex = playlist.findIndex(s => s._id === nextSong._id);
+    // Ensure we don't crash if current track isn't in the pool
+    const baseIndex = currentIndexInPool !== -1 ? currentIndexInPool : lastContextIndexRef.current;
+    const nextIndexInPool = (baseIndex + 1) % currentPool.length;
     
-    setCurrentTrackIndex(globalIndex);
+    const nextSong = currentPool[nextIndexInPool];
+    setCurrentTrackIndex(playlist.findIndex(s => s._id === nextSong._id));
   };
 
   const handlePrev = () => {
-    // PREVIOUS always respects the Playlist Context, NOT the manual queue
+    // 1. Get the pool we are currently anchored to
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
+    
+    // 2. Find the current track's index in that pool
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
-    
-    // Calculate previous index, handling wrap-around
-    const prevIndexInPool = currentIndexInPool <= 0 ? currentPool.length - 1 : currentIndexInPool - 1;
-    
-    const prevSong = currentPool[prevIndexInPool];
-    const globalIndex = playlist.findIndex(s => s._id === prevSong._id);
-    
-    setCurrentTrackIndex(globalIndex);
+
+    // 3. LOGIC: If we are in the middle of the playlist
+    if (currentIndexInPool > 0) {
+      const prevSong = currentPool[currentIndexInPool - 1];
+      setCurrentTrackIndex(playlist.findIndex(s => s._id === prevSong._id));
+      isPlayingFromQueueRef.current = false; // Return to playlist context
+    } 
+    // 4. LOGIC: If we are playing a "Next in Queue" song, 
+    // "Previous" should jump back to the song we were playing before the queue started.
+    else if (currentIndexInPool === -1) {
+      const prevSong = currentPool[lastContextIndexRef.current];
+      setCurrentTrackIndex(playlist.findIndex(s => s._id === prevSong._id));
+      isPlayingFromQueueRef.current = false;
+    }
+    // 5. If at the very start, just restart current song
+    else {
+      audioRef.current.currentTime = 0;
+    }
   };
 
 
@@ -1904,16 +1918,18 @@ function App() {
                       <button 
                         className="groove-play-btn" 
                         onClick={() => {
-                          const isCurrentTrackInView = filteredPlaylist.some(s => s._id === currentTrack?._id);
+                          // 1. Force the context to be the current filtered playlist
+                          setPlaybackContext(filteredPlaylist); 
                           
-                          if (!isPlaying || !isCurrentTrackInView) {
-                            if (filteredPlaylist.length > 0) {
-                              const firstSongGlobalIndex = playlist.findIndex(s => s._id === filteredPlaylist[0]._id);
-                              setCurrentTrackIndex(firstSongGlobalIndex);
-                              setIsPlaying(true);
-                            }
-                          } else {
-                            togglePlayPause();
+                          // 2. Lock the name
+                          setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
+                          
+                          // 3. Start from the first song in the FILTERED list
+                          if (filteredPlaylist.length > 0) {
+                            const firstSong = filteredPlaylist[0];
+                            setCurrentTrackIndex(playlist.findIndex(s => s._id === firstSong._id));
+                            setIsPlaying(true);
+                            isPlayingFromQueueRef.current = false;
                           }
                         }}
                       >
@@ -2024,14 +2040,11 @@ function App() {
                       key={`${track._id}-${index}`}
                       className={`groove-track-card ${isActive ? 'active' : ''}`}
                       onClick={() => { 
-                        setPlaybackContext(filteredPlaylist); 
+                        setPlaybackContext(filteredPlaylist); // <--- THIS IS THE KEY
+                        setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
                         setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
                         setIsPlaying(true); 
-                        isPlayingFromQueueRef.current = false; // Turn off the queue lock
-
-                        // Lock the name of the playlist into memory permanently
-                        const currentListName = selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "All Songs";
-                        setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : currentListName);
+                        isPlayingFromQueueRef.current = false;
                       }}
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                     >
@@ -2119,6 +2132,7 @@ function App() {
             {(() => {
               const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
               const currentIndexInContext = currentPool.findIndex(s => s._id === currentTrack?._id);
+              // Use anchor if we are currently in queue mode
               const sliceAnchor = currentIndexInContext !== -1 ? currentIndexInContext : lastContextIndexRef.current;
               const remainingSongs = currentPool.slice(sliceAnchor + 1);
               
