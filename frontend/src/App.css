@@ -1660,3 +1660,14 @@ h1, h2, h3, h4 {
   /* Darkens the background slightly to make the white text pop more */
   background-color: rgba(0, 0, 0, 0.7) !important; 
 }
+
+.bento-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.bento-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+.bento-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.5);
+}

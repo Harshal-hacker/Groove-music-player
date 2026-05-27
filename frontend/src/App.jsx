@@ -11,6 +11,8 @@ function App() {
   const [playlist, setPlaylist] = useState([]);
   const [view, setView] = useState('player');
   const [searchQuery, setSearchQuery] = useState(''); // Holds the search text
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   // NEW: Keeps track of which view we are in
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,6 +41,9 @@ function App() {
   const [isShuffle, setIsShuffle] = useState(false);
   const [isRepeat, setIsRepeat] = useState(false);
   const audioRef = useRef(null);
+  const isPlayingFromQueueRef = useRef(false); // Tells the engine to ignore manual songs
+  const [activePlaylistName, setActivePlaylistName] = useState("All Songs"); // Locks in the name
+  const lastContextIndexRef = useRef(0);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
@@ -178,10 +183,16 @@ function App() {
 
   // --- Playback Engine Effect ---
   useEffect(() => {
-    if (isPlaying && currentTrack && audioRef.current) {
-      audioRef.current.play().catch(e => console.log("Audio play blocked by browser", e));
+    if (audioRef.current && currentTrack) {
+      // Only change src if it's different to prevent resetting the song
+      if (audioRef.current.src !== currentTrack.src) {
+        audioRef.current.src = currentTrack.src;
+      }
+      if (isPlaying) {
+        audioRef.current.play().catch(e => console.error("Auto-play failed:", e));
+      }
     }
-  }, [currentTrackIndex, isPlaying, currentTrack]);
+  }, [currentTrackIndex]);
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -354,6 +365,42 @@ function App() {
     };
   }, [playlist, currentTrackIndex, isPlaying]); // Keep dependency array synced with your playback controls
 
+  // =========================================================================
+  // SEARCH DEBOUNCER
+  // =========================================================================
+  useEffect(() => {
+    // 1. Start a 300ms countdown timer every time the user types a letter
+    const timerId = setTimeout(() => {
+      setDebouncedQuery(searchQuery); // Only lock in the text when the timer hits zero
+    }, 300);
+
+    // 2. THE MAGIC: If the user types another letter BEFORE 300ms, clear the old timer!
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [searchQuery]);
+
+  // =========================================================================
+  // SEARCH SHORTCUTS (CTRL+K to Open, ESC to Close)
+  // =========================================================================
+  useEffect(() => {
+    const handleSearchShortcuts = (e) => {
+      // 1. Open on Ctrl + K (or Cmd + K on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+      
+      // 2. Close on Escape key
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleSearchShortcuts);
+    return () => window.removeEventListener('keydown', handleSearchShortcuts);
+  }, []);
+
   // --- UPGRADED: BACKGROUND PLAYBACK SYNC ENGINE (WITH HEARTBEAT) ---
   useEffect(() => {
     const userId = localStorage.getItem('userId');
@@ -395,6 +442,22 @@ function App() {
       if (heartbeatInterval) clearInterval(heartbeatInterval); // Clean up the timer
     };
   }, [isPlaying, currentTrack]);
+
+  // =========================================================================
+  // CONTEXT MEMORY TRACKER
+  // =========================================================================
+  useEffect(() => {
+    // --- FIX: DO NOT OVERWRITE ANCHOR IF PLAYING FROM THE MANUAL QUEUE! ---
+    if (isPlayingFromQueueRef.current) return; 
+
+    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
+    if (currentTrack) {
+      const indexInContext = currentPool.findIndex(s => s._id === currentTrack._id);
+      if (indexInContext !== -1) {
+        lastContextIndexRef.current = indexInContext;
+      }
+    }
+  }, [currentTrack, playbackContext, playlist]);
   
   // --- Handlers: Playback ---
   const togglePlayPause = () => {
@@ -455,44 +518,41 @@ function App() {
 };
 
   const handleNext = () => {
-    // 1. Fallback to global playlist array if context memory layer is empty
-    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
-
-    // 2. Handle active Queue items first if they exist
+    // 1. If we have manual items, play them first!
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
+      
       if (indexInGlobal !== -1) {
         setCurrentTrackIndex(indexInGlobal);
-        setQueue(prev => prev.slice(1));
+        setQueue(prev => prev.slice(1)); // Remove the played song from manual queue
         return;
       }
     }
 
-    // 3. Find where the current song sits inside our locked playback context
+    // 2. If Queue is empty, continue through the active playlist
+    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
-
-    if (isShuffle) {
-      const randomIndex = Math.floor(Math.random() * currentPool.length);
-      const globalIndex = playlist.findIndex(s => s._id === currentPool[randomIndex]._id);
-      setCurrentTrackIndex(globalIndex);
-    } else {
-      // Advance normally through the locked context pool
-      const nextIndexInPool = (currentIndexInPool + 1) % currentPool.length;
-      const nextSong = currentPool[nextIndexInPool];
-      const globalIndex = playlist.findIndex(s => s._id === nextSong._id);
-      setCurrentTrackIndex(globalIndex);
-    }
+    
+    // We use the anchor to find where to go next in the playlist
+    const nextIndexInPool = (currentIndexInPool + 1) % currentPool.length;
+    const nextSong = currentPool[nextIndexInPool];
+    const globalIndex = playlist.findIndex(s => s._id === nextSong._id);
+    
+    setCurrentTrackIndex(globalIndex);
   };
 
   const handlePrev = () => {
+    // PREVIOUS always respects the Playlist Context, NOT the manual queue
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
-    
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+    
+    // Calculate previous index, handling wrap-around
     const prevIndexInPool = currentIndexInPool <= 0 ? currentPool.length - 1 : currentIndexInPool - 1;
     
     const prevSong = currentPool[prevIndexInPool];
     const globalIndex = playlist.findIndex(s => s._id === prevSong._id);
+    
     setCurrentTrackIndex(globalIndex);
   };
 
@@ -972,7 +1032,9 @@ function App() {
 
   // --- The Smart Filter ---
   const filteredPlaylist = playlist.filter((song) => {
-    const lowerCaseQuery = searchQuery.toLowerCase();
+    // FIX: Read from the safe, debounced text instead of the raw input
+    const lowerCaseQuery = debouncedQuery.toLowerCase(); 
+    
     const matchesSearch = song.title.toLowerCase().includes(lowerCaseQuery) || 
                           song.artist.toLowerCase().includes(lowerCaseQuery);
     
@@ -1177,25 +1239,26 @@ function App() {
           </div>
 
           {/* SEARCH BAR */}
-          <div style={{ position: 'relative', width: '100%', maxWidth: '450px' }}>
-            <Search size={18} style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', color: '#10b981' }} />
-            <input 
-              className="groove-search-input" /* <--- ADD THIS CLASS */
-              type="text" 
-              placeholder="Search tracks..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ 
-                width: '100%', 
-                padding: '12px 25px 12px 55px', /* Slightly tightened padding to fit the new slimmer header */
-                borderRadius: '50px', 
-                border: '1px solid rgba(255,255,255,0.1)', 
-                backgroundColor: 'rgba(0,0,0,0.4)', 
-                color: 'white', 
-                outline: 'none', 
-                fontSize: '14px'
-              }}
-            />  
+          {/* THE COMMAND PALETTE TRIGGER */}
+          <div 
+            onClick={() => setIsSearchOpen(true)}
+            style={{ 
+              width: '100%', maxWidth: '400px', padding: '10px 20px', 
+              borderRadius: '50px', border: '1px solid rgba(255,255,255,0.1)', 
+              backgroundColor: 'rgba(0,0,0,0.4)', color: '#64748b', 
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', transition: '0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.5)'}
+            onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Search size={16} color="#10b981" />
+              <span style={{ fontSize: '13px', fontWeight: '600' }}>Search tracks, artists...</span>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '800', color: '#fff' }}>
+              Ctrl K
+            </div>
           </div>
         </div>
 
@@ -1510,7 +1573,7 @@ function App() {
           {/* ========================================================================= */}
           {/* DYNAMIC CATEGORIZED SHELF GROUPS (JIOSAAVN STYLE) */}
           {/* ========================================================================= */}
-          {activeCategory === 'All' && !selectedPlaylist && (
+          {activeCategory === 'All' && !selectedPlaylist && debouncedQuery.trim() === '' && (
             (() => {
               // 1. Extract all unique category groups present in your ready-made cloud data
               const categories = [...new Set(readyMadePlaylists.map(pl => pl.category || 'Featured'))];
@@ -1654,7 +1717,10 @@ function App() {
           {activeCategory === 'All' && !selectedPlaylist && (
             <>
               <div style={{ marginBottom: '50px' }}>
-                <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>ALL SONGS</span>
+                <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>
+                  {/* --- NEW: Dynamic Title --- */}
+                  {debouncedQuery.trim() !== '' ? 'SEARCH RESULTS' : 'ALL SONGS'}
+                </span>
               </div>
               <div style={{ 
                 display: 'grid', 
@@ -1674,6 +1740,11 @@ function App() {
                         setPlaybackContext(filteredPlaylist);
                         setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
                         setIsPlaying(true); 
+                        isPlayingFromQueueRef.current = false; // Turn off the queue lock
+
+                        // Lock the name of the playlist into memory permanently
+                        const currentListName = selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "All Songs";
+                        setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : currentListName);
                       }}
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
 
@@ -1954,11 +2025,13 @@ function App() {
                       className={`groove-track-card ${isActive ? 'active' : ''}`}
                       onClick={() => { 
                         setPlaybackContext(filteredPlaylist); 
-                        
-                        // FIX: Must use global 'playlist' to find the correct master index for the audio engine!
                         setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
-                        
                         setIsPlaying(true); 
+                        isPlayingFromQueueRef.current = false; // Turn off the queue lock
+
+                        // Lock the name of the playlist into memory permanently
+                        const currentListName = selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "All Songs";
+                        setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : currentListName);
                       }}
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                     >
@@ -1989,110 +2062,139 @@ function App() {
         <aside style={{
           width: isQueueOpen ? '350px' : '0px',
           opacity: isQueueOpen ? 1 : 0,
-          background: 'rgba(255, 255, 255, 0.03)',
-          backdropFilter: 'blur(40px)',
+          background: '#121212',
           borderLeft: isQueueOpen ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
-          transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden'
+          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1050
         }}>
           {/* QUEUE HEADER */}
-          <div style={{ padding: '30px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '900' }}>Queue</h3>
-              <p style={{ margin: 0, fontSize: '11px', color: '#10b981', fontWeight: '800' }}>{queue.length} TRACKS</p>
-            </div>
-            
-            {/* DELETE ENTIRE QUEUE BUTTON */}
-            {queue.length > 0 && (
-              <button 
-                onClick={() => setQueue([])} 
-                style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '10px', fontWeight: '800', cursor: 'pointer' }}
-              >
-                CLEAR ALL
-              </button>
-            )}
+          <div style={{ padding: '24px 24px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#fff' }}>Queue</h3>
+            <button onClick={() => setIsQueueOpen(false)} style={{ background: 'none', border: 'none', color: '#a7a7a7', cursor: 'pointer', display: 'flex', padding: 0 }}>
+              <X size={20} />
+            </button>
           </div>
 
-          {/* QUEUE LIST */}
-          <div className="bento-scrollbar" style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
-            {queue.map((song, index) => (
-              <div key={`${song._id}-${index}`} className="queue-item-row" style={{
-                display: 'flex', alignItems: 'center', gap: '12px', padding: '10px',
-                background: 'rgba(255,255,255,0.02)', borderRadius: '12px', marginBottom: '8px',
-                position: 'relative', transition: '0.3s'
-              }}>
-                <img src={song.cover} style={{ width: '40px', height: '40px', borderRadius: '8px' }} alt="" />
-                <div style={{ flex: 1, overflow: 'hidden' }}>
-                  <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
-                  <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>{song.artist}</p>
+          <div className="bento-scrollbar" style={{ flex: 1, padding: '0 24px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            
+            {/* 1. NOW PLAYING */}
+            {currentTrack && (
+              <div>
+                <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#fff', fontWeight: '800' }}>Now playing</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <img src={currentTrack.cover || "/Groove.png"} style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} alt="" />
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <p style={{ margin: 0, fontSize: '15px', color: '#1db954', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.title}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#b3b3b3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.artist}</p>
+                  </div>
                 </div>
-
-                {/* REMOVE SINGLE SONG BUTTON */}
-                <button 
-                  onClick={() => setQueue(prev => prev.filter((_, i) => i !== index))}
-                  style={{ 
-                    background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', 
-                    padding: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center' 
-                  }}
-                  className="remove-from-queue-btn"
-                >
-                  <X size={14} />
-                </button>
               </div>
-            ))}
+            )}
+
+            {/* 2. NEXT IN QUEUE (MANUAL) */}
+            {queue.length > 0 && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, fontSize: '16px', color: '#fff', fontWeight: '800' }}>Next in queue</h4>
+                  <button onClick={() => setQueue([])} style={{ background: 'none', border: 'none', color: '#b3b3b3', fontSize: '13px', fontWeight: '600', cursor: 'pointer', padding: 0 }}>Clear queue</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {queue.map((song, index) => (
+                    <div key={`manual-${song._id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <img src={song.cover || "/Groove.png"} style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} alt="" />
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <p style={{ margin: 0, fontSize: '15px', color: '#fff', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
+                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#b3b3b3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist}</p>
+                      </div>
+                      <button onClick={() => setQueue(prev => prev.filter((_, i) => i !== index))} style={{ background: 'none', border: 'none', color: '#b3b3b3', cursor: 'pointer', padding: 0 }}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. NEXT FROM PLAYLIST */}
+            {(() => {
+              const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
+              const currentIndexInContext = currentPool.findIndex(s => s._id === currentTrack?._id);
+              const sliceAnchor = currentIndexInContext !== -1 ? currentIndexInContext : lastContextIndexRef.current;
+              const remainingSongs = currentPool.slice(sliceAnchor + 1);
+              
+              if (remainingSongs.length > 0) {
+                return (
+                  <div>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#fff', fontWeight: '800' }}>
+                      Next from: {activePlaylistName}
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {remainingSongs.map((song, index) => (
+                        <div key={`auto-${song._id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: 0.6 }}>
+                          <img src={song.cover || "/Groove.png"} style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} alt="" />
+                          <div style={{ flex: 1, overflow: 'hidden' }}>
+                            <p style={{ margin: 0, fontSize: '15px', color: '#fff', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#b3b3b3', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
         </aside>
       </div>
 
       {/* PERSISTENT FLOATING HUD TRACKER BOX */}
-    {isUploading && (
-      <div style={{
-        position: 'fixed',
-        bottom: '130px', // Sits perfectly anchored right above your 110px footer bar
-        left: '40px',    // Aligns beautifully with the left layout boundaries
-        width: '260px',
-        backgroundColor: 'rgba(10, 10, 15, 0.85)',
-        backdropFilter: 'blur(24px) saturate(180%)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '16px',
-        padding: '16px',
-        boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-        zIndex: 1050,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', letterSpacing: '1px' }}>
-            UPLOADING
-          </span>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>
-            {uploadStats.current}/{uploadStats.total} Files
-          </span>
-        </div>
-        
-        <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
-          Processing media batch...
-        </div>
+      {isUploading && (
+        <div style={{
+          position: 'fixed',
+          bottom: '130px', // Sits perfectly anchored right above your 110px footer bar
+          left: '40px',    // Aligns beautifully with the left layout boundaries
+          width: '260px',
+          backgroundColor: 'rgba(10, 10, 15, 0.85)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '16px',
+          padding: '16px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+          zIndex: 1050,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', letterSpacing: '1px' }}>
+              UPLOADING
+            </span>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>
+              {uploadStats.current}/{uploadStats.total} Files
+            </span>
+          </div>
+          
+          <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+            Processing media batch...
+          </div>
 
-        {/* Inner Progress Bar Rail */}
-        <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', marginTop: '4px' }}>
-          <div style={{ 
-            width: `${overallProgress}%`, 
-            height: '100%', 
-            backgroundColor: '#10b981', 
-            borderRadius: '10px',
-            transition: 'width 0.3s ease' 
-          }} />
-        </div>
+          {/* Inner Progress Bar Rail */}
+          <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', marginTop: '4px' }}>
+            <div style={{ 
+              width: `${overallProgress}%`, 
+              height: '100%', 
+              backgroundColor: '#10b981', 
+              borderRadius: '10px',
+              transition: 'width 0.3s ease' 
+            }} />
+          </div>
 
-        <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'right', fontWeight: '600' }}>
-          {overallProgress}% Complete
+          <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'right', fontWeight: '600' }}>
+            {overallProgress}% Complete
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
       <footer style={{ 
         height: '85px', 
@@ -2320,8 +2422,18 @@ function App() {
                       );
                     })()}
 
-                    {/* 2. Add to queue */}
-                    <div className="context-item" onClick={() => { /* Add to queue logic here if needed */ setContextMenu(null); }}>
+                    {/* 2. Add to queue (Curated) */}
+                    <div className="context-item" onClick={() => { 
+                      if (targetPl && targetPl.songIds && targetPl.songIds.length > 0) {
+                        setQueue(prev => [...prev, ...targetPl.songIds]);
+                        setToast({ message: `Added ${targetPl.songIds.length} tracks to Queue!`, type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } else {
+                        setToast({ message: `This playlist is empty!`, type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                      setContextMenu(null); 
+                    }}>
                       <div className="item-content"><ListMusic size={16} /> <span>Add to queue</span></div>
                     </div>
 
@@ -2394,7 +2506,17 @@ function App() {
                 ) : (
                   // --- PROFILE B: STANDARD PERSONAL PLAYLIST ---
                   <>
-                    <div className="context-item" onClick={() => { /* Add to queue logic here */ setContextMenu(null); }}>
+                    <div className="context-item" onClick={() => { 
+                      if (targetPl && targetPl.songIds && targetPl.songIds.length > 0) {
+                        setQueue(prev => [...prev, ...targetPl.songIds]);
+                        setToast({ message: `Added ${targetPl.songIds.length} tracks to Queue!`, type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      } else {
+                        setToast({ message: `This playlist is empty!`, type: 'error' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+                      setContextMenu(null); 
+                    }}>
                       <div className="item-content"><ListMusic size={16} /> <span>Add to queue</span></div>
                     </div>
 
@@ -2725,6 +2847,103 @@ function App() {
                 YES, DELETE
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* THE VERCEL-STYLE COMMAND PALETTE */}
+      {/* ========================================================================= */}
+      {isSearchOpen && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(8px)',
+            display: 'flex', justifyContent: 'center', paddingTop: '12vh',
+            animation: 'ultraFade 0.2s ease-out'
+          }}
+          onClick={() => setIsSearchOpen(false)} // Clicking outside closes it
+        >
+          {/* Main Modal Body */}
+          <div 
+            style={{
+              width: '100%', maxWidth: '650px', height: 'fit-content', maxHeight: '70vh',
+              backgroundColor: 'rgba(15, 15, 20, 0.95)', border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '20px', display: 'flex', flexDirection: 'column',
+              boxShadow: '0 40px 80px rgba(0,0,0,0.8), 0 0 40px rgba(16, 185, 129, 0.05)'
+            }}
+            onClick={(e) => e.stopPropagation()} // Prevents closing when clicking inside
+          >
+            
+            {/* MASSIVE INPUT FIELD */}
+            <div style={{ display: 'flex', alignItems: 'center', padding: '20px 25px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <Search size={24} color="#10b981" />
+              <input 
+                autoFocus
+                type="text"
+                placeholder="What do you want to listen to?"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%', background: 'transparent', border: 'none', outline: 'none',
+                  color: '#fff', fontSize: '20px', fontWeight: '700', paddingLeft: '15px'
+                }}
+              />
+              <div 
+                onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }}
+                style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '10px', color: '#fff', fontWeight: '800', cursor: 'pointer' }}
+              >
+                ESC
+              </div>
+            </div>
+
+            {/* SLEEK RESULTS LIST */}
+            <div className="bento-scrollbar" style={{ padding: '15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              
+              {debouncedQuery === '' ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: '600' }}>
+                  Type a song or artist to start searching...
+                </div>
+              ) : (
+                filteredPlaylist.slice(0, 8).map((track) => (
+                  <div 
+                    key={track._id}
+                    onClick={() => {
+                      setPlaybackContext(filteredPlaylist);
+                      setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id));
+                      setIsPlaying(true);
+                      isPlayingFromQueueRef.current = false; // Turn off queue lock
+
+                      // ADD THIS LINE:
+                      setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : "All Songs");
+                      
+                      setIsSearchOpen(false); // Close modal
+                    }}
+                    style={{ 
+                      display: 'flex', alignItems: 'center', gap: '15px', padding: '10px 15px',
+                      borderRadius: '12px', cursor: 'pointer', transition: '0.2s',
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                      e.currentTarget.style.transform = 'translateX(4px)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.transform = 'translateX(0)';
+                    }}
+                  >
+                    <img src={track.cover || "/Groove.png"} style={{ width: '40px', height: '40px', borderRadius: '8px' }} alt="" />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>{track.title}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{track.artist}</div>
+                    </div>
+                    <Play size={18} color="#10b981" />
+                  </div>
+                ))
+              )}
+            </div>
+
           </div>
         </div>
       )}
