@@ -55,6 +55,9 @@ function App() {
   const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
   const [playbackContext, setPlaybackContext] = useState([]);
   const [toast, setToast] = useState(null);
+  // --- Cross-Device Playback Sync State ---
+  const [savedTime, setSavedTime] = useState(0);
+  const [initialTimeSet, setInitialTimeSet] = useState(false);
   // --- New Add-Track Modal States ---
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
   const [addTrackSearch, setAddTrackSearch] = useState('');
@@ -111,7 +114,6 @@ function App() {
     const userId = localStorage.getItem('userId');
     
     if (isAuthenticated && userId) {
-      // Stick to localhost during local testing
       fetch(`${API_BASE_URL}/api/users/${userId}`)
         .then(res => res.ok ? res.json() : Promise.reject('User not found'))
         .then(data => {
@@ -119,13 +121,30 @@ function App() {
             likedSongs: data.likedSongs || [],
             role: data.role || 'user'
           });
+
+          // --- UPGRADED: RESTORE PLAYBACK STATE ON LOGIN ---
+          if (data.lastPlayback?.songId && playlist.length > 0 && !initialTimeSet) {
+            const savedIndex = playlist.findIndex(s => s._id === data.lastPlayback.songId);
+            if (savedIndex !== -1) {
+              setCurrentTrackIndex(savedIndex); 
+              setSavedTime(data.lastPlayback.currentTime || 0); 
+              setInitialTimeSet(true); 
+              
+              // NEW: If the audio file cached and loaded faster than the DB responded, 
+              // force the scrub right now instead of waiting for handleLoadedMetadata!
+              if (audioRef.current && audioRef.current.readyState >= 1) {
+                audioRef.current.currentTime = data.lastPlayback.currentTime || 0;
+                setCurrentTime(data.lastPlayback.currentTime || 0);
+              }
+            }
+          }
         })
         .catch(err => {
           console.error("Sync failed:", err);
           setUserData({ likedSongs: [], role: 'user' });
         });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, playlist.length]); // Added playlist.length so it waits for songs to load!
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -335,6 +354,48 @@ function App() {
     };
   }, [playlist, currentTrackIndex, isPlaying]); // Keep dependency array synced with your playback controls
 
+  // --- UPGRADED: BACKGROUND PLAYBACK SYNC ENGINE (WITH HEARTBEAT) ---
+  useEffect(() => {
+    const userId = localStorage.getItem('userId');
+    if (!userId || !currentTrack || !audioRef.current) return;
+
+    const syncStateToCloud = () => {
+      // Only bother saving if they've listened past 0 seconds
+      if (audioRef.current.currentTime > 0) {
+        fetch(`${API_BASE_URL}/api/users/${userId}/playback`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'keepalive': 'true' },
+          body: JSON.stringify({
+            songId: currentTrack._id,
+            currentTime: audioRef.current.currentTime
+          })
+        }).catch(e => console.error("Cloud sync failed", e));
+      }
+    };
+
+    // 1. Sync immediately when the user pauses the music
+    if (!isPlaying) {
+      syncStateToCloud();
+    }
+
+    // 2. NEW: THE HEARTBEAT (Auto-save every 10 seconds while playing)
+    // This guarantees your DB is never more than 10 seconds behind, even if the browser crashes!
+    let heartbeatInterval;
+    if (isPlaying) {
+      heartbeatInterval = setInterval(() => {
+        syncStateToCloud();
+      }, 10000); 
+    }
+
+    // 3. Sync automatically if the user safely closes their browser window
+    window.addEventListener('beforeunload', syncStateToCloud);
+    
+    return () => {
+      window.removeEventListener('beforeunload', syncStateToCloud);
+      if (heartbeatInterval) clearInterval(heartbeatInterval); // Clean up the timer
+    };
+  }, [isPlaying, currentTrack]);
+  
   // --- Handlers: Playback ---
   const togglePlayPause = () => {
   if (!audioRef.current) return;
@@ -442,21 +503,27 @@ function App() {
   const handleTimeUpdate = () => setCurrentTime(audioRef.current.currentTime);
 
   const handleLoadedMetadata = async () => {
+    if (!audioRef.current) return;
     const seconds = audioRef.current.duration;
     setDuration(seconds);
+
+    // --- NEW: SEEK TO SAVED TIMESTAMP ---
+    if (savedTime > 0) {
+      audioRef.current.currentTime = savedTime;
+      setCurrentTime(savedTime);
+      setSavedTime(0); // Clear it out so it doesn't trap the user in a loop
+    }
 
     // If the song doesn't have a duration in the database yet, update it!
     if (currentTrack && !currentTrack.duration) {
       try {
         const response = await fetch(`${API_BASE_URL}/api/songs/${currentTrack._id}/duration`, {
-        // const response = await fetch(`${API_BASE_URL}/api/songs/${currentTrack._id}/duration`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ duration: seconds })
         });
 
         if (response.ok) {
-          // Update local state so the table updates instantly without a refresh
           setPlaylist(prev => prev.map(song => 
             song._id === currentTrack._id ? { ...song, duration: seconds } : song
           ));
@@ -1077,7 +1144,7 @@ function App() {
 
       {/* --- ULTRA-WIDE HEADER --- */}
       <header style={{ 
-        height: '90px', display: 'flex', alignItems: 'center', padding: '0 40px',
+        height: '70px', display: 'flex', alignItems: 'center', padding: '0 30px',
         backgroundColor: 'rgba(2, 6, 23, 0.6)', backdropFilter: 'blur(40px) saturate(200%)',
         borderBottom: '1px solid rgba(255,255,255,0.08)', zIndex: 1000
       }}>
@@ -1113,11 +1180,20 @@ function App() {
           <div style={{ position: 'relative', width: '100%', maxWidth: '450px' }}>
             <Search size={18} style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', color: '#10b981' }} />
             <input 
-              type="text" placeholder="Search tracks..." value={searchQuery}
+              className="groove-search-input" /* <--- ADD THIS CLASS */
+              type="text" 
+              placeholder="Search tracks..." 
+              value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ 
-                width: '100%', padding: '14px 25px 14px 60px', borderRadius: '50px', border: '1px solid rgba(255,255,255,0.1)', 
-                backgroundColor: 'rgba(0,0,0,0.4)', color: 'white', outline: 'none', fontSize: '15px'
+                width: '100%', 
+                padding: '12px 25px 12px 55px', /* Slightly tightened padding to fit the new slimmer header */
+                borderRadius: '50px', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                backgroundColor: 'rgba(0,0,0,0.4)', 
+                color: 'white', 
+                outline: 'none', 
+                fontSize: '14px'
               }}
             />  
           </div>
@@ -1417,7 +1493,7 @@ function App() {
         {/* MAIN LIST: STRETCHED BENTO BOX */}
         <main style={{ 
           flex: 1, overflowY: 'auto', backgroundColor: 'rgba(255,255,255,0.01)', backdropFilter: 'blur(20px)',
-          borderRadius: '28px', border: '1px solid rgba(255,255,255,0.05)', padding: '40px' 
+          borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', padding: '25px' 
         }} className="bento-scrollbar">
           {/*onContextMenu={(e) => {
             const isClickingCard = e.target.closest('.curated-bento-card') || 
@@ -1699,7 +1775,6 @@ function App() {
                     />
                   </div>
                   <div className="deck-details">
-                    <span className="deck-badge">DIGITAL COLLECTION</span>
                     {isEditingName ? (
                       <input
                         autoFocus
@@ -1729,7 +1804,28 @@ function App() {
                   
                     <div className="deck-info-row">
                       <div className="deck-stat"><span>{filteredPlaylist.length}</span> TRACKS</div>
-                      <div className="deck-stat"><span>{Math.floor(filteredPlaylist.length * 3.5 / 60)}H</span> DURATION</div>
+                      <div className="deck-stat">
+                        <span style={{ marginLeft: '4px' }}>About</span>
+                        <span style={{ textTransform: 'lowercase' }}>
+                          {(() => {
+                            // 1. Add up all the exact duration seconds from the songs in the active playlist
+                            const totalSeconds = filteredPlaylist.reduce((total, track) => total + (Number(track.duration) || 0), 0);
+                            
+                            // 2. Convert raw seconds into hours and remaining minutes
+                            const hours = Math.floor(totalSeconds / 3600);
+                            const minutes = Math.floor((totalSeconds % 3600) / 60);
+                            
+                            // 3. Format the display intelligently
+                            if (hours > 0) {
+                              return `${hours} hr ${minutes} min`;
+                            } else if (minutes > 0) {
+                              return `${minutes} min`;
+                            } else {
+                              return `0 min`;
+                            }
+                          })()}
+                        </span> 
+                      </div>
                     </div>
 
                     {/* Merged Action Unit */}
@@ -1999,8 +2095,8 @@ function App() {
     )}
 
       <footer style={{ 
-        height: '110px', 
-        padding: '0 20px 20px 20px', // Lifted off the bottom
+        height: '85px', 
+        padding: '0 20px 15px 20px', 
         display: 'flex', 
         justifyContent: 'center',
         zIndex: 1100,
@@ -2012,18 +2108,16 @@ function App() {
           height: '100%',
           backgroundColor: 'rgba(10, 10, 15, 0.8)', 
           backdropFilter: 'blur(30px) saturate(200%)',
-          borderRadius: '24px',
+          borderRadius: '20px',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex', 
           alignItems: 'center', 
-          padding: '0 30px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+          padding: '0 20px',
+          boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.7)'
         }}>
           
-          {/* --- 1. MINIMALIST TRACK INFO --- */}
-          {/* Inside the !isMobile block -> Footer Track Info */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', minWidth: '240px' }}>
-            <div style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ position: 'relative', width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
               <img src={currentTrack?.cover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={(e) => e.target.src = "/Groove.png"} />
             </div>
             
@@ -2045,25 +2139,32 @@ function App() {
 
           {/* --- 2. THE DYNAMIC CONTROL UNIT --- */}
           <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
+            
+            {/* TIGHTENED GAP AND SHRUNK ICONS */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
               <Shuffle size={16} onClick={() => setIsShuffle(!isShuffle)} style={{ cursor: 'pointer', color: isShuffle ? '#10b981' : '#444' }} />
-              <SkipBack onClick={handlePrev} size={20} fill="#fff" style={{ cursor: 'pointer' }} />
+              <SkipBack onClick={handlePrev} size={18} fill="#fff" style={{ cursor: 'pointer' }} />
               
-              {/* CENTERED ACCENT PLAY BUTTON */}
+              {/* SHRUNK CENTERED ACCENT PLAY BUTTON */}
               <div 
                 onClick={togglePlayPause} 
                 style={{ 
-                  width: '40px', height: '40px', borderRadius: '18px', backgroundColor: '#fff',
+                  width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                   transition: '0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                  boxShadow: '0 10px 20px rgba(255, 255, 255, 0.1)'
+                  boxShadow: '0 8px 16px rgba(255, 255, 255, 0.1)'
                 }}
                 className="play-trigger"
               >
-                {isPlaying ? <Pause size={24} color="#000" fill="#000" /> : <Play size={24} color="#000" fill="#000"  />}
+                {isPlaying ? (
+                  <Pause size={18} color="#000" fill="#000" />
+                ) : (
+                  // Added a tiny 2px left margin to optically center the play triangle inside the circle
+                  <Play size={18} color="#000" fill="#000" style={{ marginLeft: '2px' }} /> 
+                )}
               </div>
 
-              <SkipForward onClick={handleNext} size={20} fill="#fff" style={{ cursor: 'pointer' }} />
+              <SkipForward onClick={handleNext} size={18} fill="#fff" style={{ cursor: 'pointer' }} />
               <Repeat size={16} onClick={() => setIsRepeat(!isRepeat)} style={{ cursor: 'pointer', color: isRepeat ? '#10b981' : '#444' }} />
             </div>
 

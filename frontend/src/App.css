@@ -1642,3 +1642,21 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.6) !important;
   border-color: #10b981 !important;
 }
+
+/* ========================================================================= */
+/* SEARCH BAR FOCUS ANIMATION */
+/* ========================================================================= */
+.groove-search-input {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.groove-search-input:focus {
+  /* Changes the faint white border to your brand's neon green */
+  border-color: #10b981 !important;
+  
+  /* Adds a soft, glowing halo behind the input box */
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25) !important;
+  
+  /* Darkens the background slightly to make the white text pop more */
+  background-color: rgba(0, 0, 0, 0.7) !important; 
+}

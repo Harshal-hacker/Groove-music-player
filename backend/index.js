@@ -476,6 +476,26 @@ app.delete('/api/playlists/:id', async (req, res) => {
   }
 });
 
+// =========================================================================
+// SYNC PLAYBACK STATE
+// =========================================================================
+app.patch('/api/users/:id/playback', async (req, res) => {
+  try {
+    const { songId, currentTime } = req.body;
+    
+    await User.findByIdAndUpdate(req.params.id, {
+      $set: { 
+        'lastPlayback.songId': songId, 
+        'lastPlayback.currentTime': currentTime 
+      }
+    });
+    
+    res.status(200).json({ message: "Playback synced successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });
