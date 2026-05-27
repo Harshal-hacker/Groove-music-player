@@ -570,7 +570,6 @@ function App() {
     }
   };
 
-
   const handleSongEnd = () => handleNext();
 
   // --- Handlers: Time & Progress ---
