@@ -341,7 +341,15 @@ app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) =>
     // Save to database with a 15-MINUTE expiration
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; 
-    await user.save();
+    await User.updateOne(
+      { email: user.email }, 
+      { 
+        $set: { 
+          resetPasswordToken: resetToken, 
+          resetPasswordExpires: Date.now() + 15 * 60 * 1000 
+        } 
+      }
+    );
 
     // Send the email
     const mailOptions = {
@@ -385,7 +393,13 @@ app.patch('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => 
     // Clear the token
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
-    await user.save();
+    await User.updateOne(
+      { _id: user._id },
+      { 
+        $set: { password: user.password },
+        $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 } 
+      }
+    );
 
     res.json({ message: "Password updated successfully." });
   } catch (err) {

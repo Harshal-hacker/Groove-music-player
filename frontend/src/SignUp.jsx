@@ -96,7 +96,7 @@ function SignUp({ onBackToLogin, onBackToPlayer }) {
 
       {/* Visual Side */}
       <div className="auth-visual-side" style={{ flex: 1.2, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end', padding: '60px' }}>
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(rgba(0,0,0,0.3), #000), url("https://res.cloudinary.com/ducrlh5lv/image/upload/v1779566951/Login_Page_fuexbz.png")', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(rgba(0,0,0,0.3), #000), url("https://res.cloudinary.com/ducrlh5lv/image/upload/v1780596443/SignUp_mj5zfa.png")', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.5 }} />
         <div style={{ position: 'relative', zIndex: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#10b981', marginBottom: '20px' }}>
             <Headphones size={32} />
