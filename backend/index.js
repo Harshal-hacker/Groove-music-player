@@ -2,6 +2,9 @@ require('dotenv').config(); // 1. Loads your secret password from the .env file
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 
@@ -57,7 +60,8 @@ const songSchema = new mongoose.Schema({
   src: { type: String, required: true },
   cover: { type: String, required: true },
   duration: { type: Number },
-  isLiked: { type: Boolean, default: false } 
+  isLiked: { type: Boolean, default: false },
+  isLossless: { type: Boolean, default: false }
 });
 
 // 4. Create the Model (This creates a 'songs' collection in your database)
@@ -221,30 +225,40 @@ app.patch('/api/users/toggle-like', async (req, res) => {
 // Account Creation Endpoint (Sign Up)
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    // Extract the new fields from the frontend request
+    const { email, password, profileName, dob, gender } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: "This email is already registered." });
+      return res.status(400).json({ message: "Email is already registered." });
     }
 
+    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Create the new user with the Spotify-style data
     const newUser = new User({
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      profileName,
+      dob,
+      gender
     });
 
     await newUser.save();
-    res.status(201).json({ message: "User created successfully" });
+    
+    // Automatically log them in by returning their new ID
+    res.status(201).json({ 
+      userId: newUser._id, 
+      role: newUser.role,
+      message: "Account created successfully!" 
+    });
+
   } catch (err) {
-    console.error("SIGNUP ERROR:", err); 
-    res.status(500).json({ message: "Database error. Check your connection." });
+    console.error("SIGNUP ERROR:", err);
+    res.status(500).json({ message: "Server error during sign up." });
   }
 });
 
@@ -271,6 +285,112 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error("Login Error:", err);
     res.status(500).json({ message: "Server error during login" });
+  }
+});
+
+console.log("Email User is:", process.env.EMAIL_USER);
+
+// Set up the email sender
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// =========================================================================
+// BULLETPROOF SECURITY: RATE LIMITERS
+// =========================================================================
+
+// 1. Prevent Email Spam (Max 3 reset requests per hour per IP)
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 Hour window
+  max: 3, // Limit each IP to 3 requests per windowMs
+  message: { message: "Too many password reset requests from this IP, please try again after an hour." },
+  standardHeaders: true, 
+  legacyHeaders: false, 
+});
+
+// 2. Prevent Brute-Force Guessing (Max 5 guesses per 15 minutes per IP)
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 Minute window
+  max: 5, // Limit each IP to 5 guesses per windowMs
+  message: { message: "Too many incorrect guesses. Your IP has been blocked for 15 minutes for security." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// =========================================================================
+// PASSWORD RESET ENDPOINTS
+// =========================================================================
+
+// 1. Generate and Email the reset code (Apply forgotPasswordLimiter here)
+app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.json({ message: "If an account exists, a reset code has been sent." });
+    }
+
+    // Generate a secure 6-character reset code
+    const resetToken = crypto.randomBytes(3).toString('hex').toUpperCase();
+    
+    // Save to database with a 15-MINUTE expiration
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; 
+    await user.save();
+
+    // Send the email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'Groove - Password Reset Code',
+      text: `We received a request to reset your password.\n\nYour reset code is: ${resetToken}\n\nThis code will expire in 15 minutes. If you didn't request this, you can safely ignore this email.`
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Email error:", error);
+        return res.status(500).json({ message: "Failed to send email." });
+      }
+      res.json({ message: "If an account exists, a reset code has been sent." });
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// 2. Apply the new password (Apply resetPasswordLimiter here)
+app.patch('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    // Find user with exact token that hasn't expired
+    const user = await User.findOne({ 
+      resetPasswordToken: token, 
+      resetPasswordExpires: { $gt: Date.now() } 
+    });
+
+    if (!user) return res.status(400).json({ message: "Invalid or expired code." });
+
+    // Hash new password and save
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    
+    // Clear the token
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: "Password updated successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

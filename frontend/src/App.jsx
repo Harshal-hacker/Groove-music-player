@@ -4,6 +4,8 @@ import './App.css';
 import Admin from './Admin';
 import SignUp from './SignUp';
 import Login from './Login';
+import ForgotPassword from './ForgotPassword';
+import ResetPassword from './ResetPassword';
 import { API_BASE_URL } from './config';
 
 function App() {
@@ -1111,21 +1113,39 @@ function App() {
       return (
         <SignUp 
           onBackToLogin={() => setView('login')} 
-          onBackToPlayer={() => setView('player')} // ADD THIS
+          onBackToPlayer={() => setView('player')}
         />
       );
     }
 
     if (view === 'login') {
-  return (
-    <Login 
-      onBackToSignup={() => setView('signup')} 
-      // Ensure the role is passed from Login.jsx to handleLoginSuccess
-      onLoginSuccess={(role) => handleLoginSuccess(role)}
-      onBackToPlayer={() => setView('player')}
-    />
-  );
-}
+      return (
+        <Login 
+          onBackToSignup={() => setView('signup')} 
+          onLoginSuccess={(role) => handleLoginSuccess(role)}
+          onBackToPlayer={() => setView('player')}
+          onForgotPassword={() => setView('forgot-password')} // <-- THIS WAS MISSING
+        />
+      );
+    }
+
+    // --- NEW: Handle the recovery flow ---
+    if (view === 'forgot-password') {
+      return (
+        <ForgotPassword 
+          onBackToLogin={() => setView('login')} 
+          onGoToReset={() => setView('reset-password')}
+        />
+      );
+    }
+
+    if (view === 'reset-password') {
+      return (
+        <ResetPassword 
+          onBackToLogin={() => setView('login')} 
+        />
+      );
+    }
 
     if (showAdmin) {
       return (
