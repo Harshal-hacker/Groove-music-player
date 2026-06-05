@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Globe, Apple, ArrowLeft, Headphones, Loader2, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
 
 function SignUp({ onBackToLogin, onBackToPlayer }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -56,7 +58,7 @@ function SignUp({ onBackToLogin, onBackToPlayer }) {
         localStorage.setItem('userId', data.userId);
         localStorage.setItem('userEmail', formData.email);
         localStorage.setItem('role', data.role);
-        onBackToPlayer();
+        Maps('/');
       } else {
         alert(data.message || "Failed to create account.");
         setStep(1); 
@@ -80,7 +82,7 @@ function SignUp({ onBackToLogin, onBackToPlayer }) {
       
       {/* Solid Bento Back Button */}
       <button 
-        onClick={() => step === 2 ? setStep(1) : onBackToPlayer()} 
+        onClick={() => step === 2 ? setStep(1) : Maps('/')} 
         style={{ 
           position: 'absolute', top: '30px', left: '30px', zIndex: 100, 
           background: '#121212', border: '1px solid #222', 

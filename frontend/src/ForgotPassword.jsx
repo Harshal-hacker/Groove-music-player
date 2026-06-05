@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Headphones, Loader2, ShieldAlert, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
 
 function ForgotPassword({ onBackToLogin }) {
   // Step 1: Request Code | Step 2: Enter Code & New Password
+  const navigate = useNavigate();
   const [step, setStep] = useState(1); 
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
@@ -55,7 +57,7 @@ function ForgotPassword({ onBackToLogin }) {
       
       if (response.ok) {
         alert("Password updated successfully! You can now log in.");
-        onBackToLogin(); // Send them back to the login page
+        Maps('/login'); // Send them back to the login page
       } else {
         // --- NEW: Set inline error instead of alert ---
         setTokenError(data.message || "Invalid or expired code.");

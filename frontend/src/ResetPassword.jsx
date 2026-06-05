@@ -18,7 +18,7 @@ function ResetPassword({ onBackToLogin }) {
       });
       if (response.ok) {
         alert("Password updated! Please log in with your new password.");
-        onBackToLogin();
+        Maps('/login');
       } else {
         const data = await response.json();
         alert(data.message || "Invalid or expired code.");
