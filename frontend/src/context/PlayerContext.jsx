@@ -127,7 +127,7 @@ export const PlayerProvider = ({ children }) => {
   useEffect(() => {
     if (playlist.length > 0 && currentUser && !hasRestoredSession) {
       const savedTrackId = currentUser.activeSession?.trackId?._id || currentUser.activeSession?.trackId;
-      const savedPlaylistId = currentUser.activeSession?.playlistId; 
+      // const savedPlaylistId = currentUser.activeSession?.playlistId; // You don't need this anymore
       const savedTime = currentUser.activeSession?.currentTime;
 
       if (savedTrackId) {
@@ -135,9 +135,9 @@ export const PlayerProvider = ({ children }) => {
         if (savedIndex !== -1) {
           setCurrentTrackIndex(savedIndex);
           
-          if (savedPlaylistId) {
-            setSelectedPlaylist(savedPlaylistId);
-          }
+          // REMOVED: setSelectedPlaylist(savedPlaylistId);
+          // Now the audio will load quietly in the bottom bar, 
+          // but the main screen will stay on the Home Dashboard!
 
           if (savedTime > 0) {
             pendingRestoreTime.current = parseFloat(savedTime);
