@@ -15,13 +15,14 @@ export default function MainFeed({
   readyMadePlaylists,
   handleContextMenu,
   isAdmin,
-  setToast
+  setToast,
 }) {
   const { 
     playlist, currentTrack, currentTrackIndex, setCurrentTrackIndex, 
     isPlaying, setIsPlaying, setPlaybackContext, isPlayingFromQueueRef,
     setActivePlaylistName, queue, setQueue,
-    currentUser // <-- Added currentUser to pull from Context securely
+    currentUser, // <-- Added currentUser to pull from Context securely
+    togglePlayPause
   } = usePlayer();
   const navigate = useNavigate();
 
@@ -293,19 +294,31 @@ export default function MainFeed({
                   <button 
                     className="groove-play-btn" 
                     onClick={() => {
-                        setPlaybackContext(filteredPlaylist); 
-                        
-                        // UNCOMMENT AND UPDATE THIS LINE:
-                        setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
-                        
+                      // 1. Check if the currently playing track belongs to the playlist we are looking at
+                      const isThisPlaylistActive = currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id);
+
+                      if (isThisPlaylistActive) {
+                        // 2. If it IS active, just toggle Play/Pause! This perfectly syncs with the bottom bar.
+                        togglePlayPause();
+                      } else {
+                        // 3. If it is a DIFFERENT playlist, load it up and start from Track 1
                         if (filteredPlaylist.length > 0) {
-                        setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
-                        setIsPlaying(true);
-                        if(isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
+                          setPlaybackContext(filteredPlaylist); 
+                          setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
+                          
+                          setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
+                          setIsPlaying(true);
+                          if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
                         }
+                      }
                     }}
-                    >
-                    {isPlaying && filteredPlaylist.some(s => s._id === currentTrack?._id) ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" style={{marginLeft: '4px'}} />}
+                  >
+                    {/* Update the icon to perfectly match the playing state of this specific context */}
+                    {isPlaying && (currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id)) ? (
+                      <Pause size={28} fill="white" /> 
+                    ) : (
+                      <Play size={28} fill="white" style={{marginLeft: '4px'}} />
+                    )}
                   </button>
                   
                   {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (

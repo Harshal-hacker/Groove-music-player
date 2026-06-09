@@ -96,6 +96,22 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
+  const forceSyncNow = () => {
+    if (audioRef.current && currentTrack) {
+      syncPlayback(currentTrack._id, audioRef.current.currentTime || 0, selectedPlaylist);
+    }
+  };
+
+  // ==========================================
+  // INSTANT ARRIVAL SYNC
+  // ==========================================
+  // The millisecond the song changes, tell the database we arrived, even if paused!
+  useEffect(() => {
+    if (currentTrack && currentUser) {
+      syncPlayback(currentTrack._id, 0, selectedPlaylist);
+    }
+  }, [currentTrack?._id]); // This specifically watches for the song ID to change
+
   useEffect(() => {
     const syncState = () => {
       if (audioRef.current && audioRef.current.currentTime > 0) {
@@ -168,6 +184,7 @@ export const PlayerProvider = ({ children }) => {
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      forceSyncNow();
     } else {
       audioRef.current.play();
       setIsPlaying(true);
@@ -175,6 +192,7 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const handleNext = () => {
+    forceSyncNow();
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
@@ -263,7 +281,8 @@ export const PlayerProvider = ({ children }) => {
       privateProfile, setPrivateProfile,
       explicitContent, setExplicitContent,
       selectedPlaylist, setSelectedPlaylist,
-      syncPlayback
+      syncPlayback,
+      forceSyncNow
     }}>
       {!isAuthLoading && children}
       {currentTrack && (

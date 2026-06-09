@@ -29,7 +29,8 @@ function MainPlayer() {
     activePlaylistName,
     audioRef,
     selectedPlaylist, setSelectedPlaylist,
-    syncPlayback
+    syncPlayback,setActivePlaylistName,
+    forceSyncNow
   } = usePlayer();
 
   // DERIVE AUTH STATUS FROM GLOBAL CONTEXT
@@ -54,6 +55,7 @@ function MainPlayer() {
   const [userData, setUserData] = useState({ likedSongs: [], role: 'user' });
   const isPlayingFromQueueRef = useRef(false);  
   const lastContextIndexRef = useRef(0);
+  const hasRestoredServerQueue = useRef(false);
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   
@@ -208,59 +210,25 @@ function MainPlayer() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [contextMenu]);
 
-  const deletePlaylist = (id) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: "Delete Playlist",
-      message: "Are you sure you want to remove this playlist? This action cannot be undone.",
-      onConfirm: async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, { 
-            method: 'DELETE',
-            credentials: 'include' // <-- ADDED
-          });
-          if (response.ok) {
-            setUserPlaylists(prev => prev.filter(pl => pl._id !== id));
-            if (selectedPlaylist === id) {
-              setSelectedPlaylist(null);
-              setActiveCategory('All');
-            }
-            setContextMenu(null);
-            setToast({ message: "Playlist deleted successfully.", type: 'success' });
-            setTimeout(() => setToast(null), 3000);
-          } else {
-            setToast({ message: "Failed to delete playlist.", type: 'error' });
-            setTimeout(() => setToast(null), 3000);
-          }
-        } catch (error) {
-          console.error("Delete failed:", error);
-        }
-        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+  // ==========================================
+  // SERVER QUEUE RESTORER
+  // ==========================================
+  useEffect(() => {
+    // Wait until the backend data (playlists and user session) is fully loaded
+    if (!hasRestoredServerQueue.current && userPlaylists.length > 0 && currentUser?.activeSession?.playlistId) {
+      
+      // Find the exact playlist the database remembers you were listening to
+      const serverPlaylist = userPlaylists.find(p => p._id === currentUser.activeSession.playlistId);
+      
+      if (serverPlaylist) {
+        // Silently restore the exact name and tracks into the queue background!
+        setActivePlaylistName(serverPlaylist.name);
+        setPlaybackContext(serverPlaylist.songIds || []);
       }
-    });
-  };
-
-  const renamePlaylist = async (id) => {
-    const currentPlaylist = userPlaylists.find(pl => pl._id === id);
-    const newName = prompt("Enter new name:", currentPlaylist?.name);
-    if (!newName || newName === currentPlaylist?.name) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists/${id}/rename`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName }),
-        credentials: 'include' // <-- ADDED
-      });
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        setUserPlaylists(prev => prev.map(pl => pl._id === id ? updatedPlaylist : pl));
-        setContextMenu(null);
-      }
-    } catch (error) {
-      console.error("Rename failed:", error);
+      
+      hasRestoredServerQueue.current = true; // Only run this once per refresh
     }
-  };
+  }, [userPlaylists, currentUser, setActivePlaylistName, setPlaybackContext]);
 
   useEffect(() => {
     if (contextMenu) document.body.style.overflow = 'hidden';
@@ -377,6 +345,7 @@ function MainPlayer() {
           audio.pause();
           setIsPlaying(false);
           audio.volume = targetVolume; 
+          forceSyncNow();
         }
       }, stepTime);
     } else {
@@ -400,6 +369,7 @@ function MainPlayer() {
   };
 
   const handleNext = () => {
+    forceSyncNow();
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
@@ -422,6 +392,7 @@ function MainPlayer() {
   };
 
   const handlePrev = () => {
+    forceSyncNow();
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
 
@@ -466,6 +437,60 @@ function MainPlayer() {
           ));
         }
       } catch (err) { console.error("Failed to auto-save duration:", err); }
+    }
+  };
+
+  const deletePlaylist = (id) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete Playlist",
+      message: "Are you sure you want to remove this playlist? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, { 
+            method: 'DELETE',
+            credentials: 'include' // <-- ADDED
+          });
+          if (response.ok) {
+            setUserPlaylists(prev => prev.filter(pl => pl._id !== id));
+            if (selectedPlaylist === id) {
+              setSelectedPlaylist(null);
+              setActiveCategory('All');
+            }
+            setContextMenu(null);
+            setToast({ message: "Playlist deleted successfully.", type: 'success' });
+            setTimeout(() => setToast(null), 3000);
+          } else {
+            setToast({ message: "Failed to delete playlist.", type: 'error' });
+            setTimeout(() => setToast(null), 3000);
+          }
+        } catch (error) {
+          console.error("Delete failed:", error);
+        }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+      }
+    });
+  };
+
+  const renamePlaylist = async (id) => {
+    const currentPlaylist = userPlaylists.find(pl => pl._id === id);
+    const newName = prompt("Enter new name:", currentPlaylist?.name);
+    if (!newName || newName === currentPlaylist?.name) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/playlists/${id}/rename`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+        credentials: 'include' // <-- ADDED
+      });
+      if (response.ok) {
+        const updatedPlaylist = await response.json();
+        setUserPlaylists(prev => prev.map(pl => pl._id === id ? updatedPlaylist : pl));
+        setContextMenu(null);
+      }
+    } catch (error) {
+      console.error("Rename failed:", error);
     }
   };
 
