@@ -3,8 +3,12 @@ import { Music, Image as ImageIcon, UploadCloud, FolderPlus, ArrowLeft, CheckCir
 import { API_BASE_URL } from './config';
 import axios from 'axios';
 import jsmediatags from 'jsmediatags';
+import { usePlayer } from './context/PlayerContext'; // <-- 1. IMPORT CONTEXT
 
 function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUploading, setOverallProgress, setUploadStats, setPlaylist }) {
+  // 2. SECURE IDENTITY STATE
+  const { currentUser } = usePlayer();
+
   // --- Form State ---
   const [songData, setSongData] = useState({ title: '', artist: '', duration: 0 });
   const [audioFile, setAudioFile] = useState(null);
@@ -18,7 +22,7 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
 
   // Fetch library for management
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/songs`)
+    fetch(`${API_BASE_URL}/api/songs`, { credentials: 'include' }) // <-- SECURED
       .then(res => res.json())
       .then(data => setExistingSongs(data));
   }, []);
@@ -35,12 +39,10 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     const file = e.target.files[0];
     if (!file) return;
 
-    // Create a temporary audio element to extract duration metadata
     const audio = new Audio();
     audio.src = URL.createObjectURL(file);
     audio.onloadedmetadata = () => {
       setAudioFile(file);
-      // Store the duration in state so we can send it to the backend
       setSongData(prev => ({ ...prev, duration: audio.duration }));
       console.log("Audio metadata loaded. Duration:", audio.duration);
     };
@@ -48,12 +50,12 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
 
   const handleDelete = async (id) => {
     if (!window.confirm("Permanent delete?")) return;
-    const userId = localStorage.getItem('userId');
+    const userId = currentUser?._id; // <-- CONTEXT IDENTITY
     
     try {
-      // We now pass the userId in the URL string (?userId=...)
       const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, {
         method: 'DELETE',
+        credentials: 'include' // <-- SECURED
       });
 
       if (res.ok) {
@@ -72,21 +74,16 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId })
+        body: JSON.stringify({ songId }),
+        credentials: 'include' // <-- SECURED
       });
 
       if (response.ok) {
         const updatedPlaylist = await response.json();
-
-        // 1. Update the playlists state so the sidebar and "filteredPlaylist" update
-        setUserPlaylists(prev => prev.map(pl => 
-          pl._id === playlistId ? updatedPlaylist : pl
-        ));
-
-        // 2. IMPORTANT: If the user is currently viewing this playlist, 
-        // we need to force a re-render by closing the menu
-        setContextMenu(null);
-        
+        if (typeof setUserPlaylists === 'function') {
+           setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
+        }
+        if (typeof setContextMenu === 'function') setContextMenu(null);
         console.log("Song removed successfully from playlist");
       }
     } catch (error) {
@@ -95,20 +92,14 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
   };
 
   const handleEditClick = (song) => {
-    // 1. Set the ID so the form knows we are in "Edit Mode"
     setEditingSongId(song._id);
-    
-    // 2. Correctly update the songData object state
     setSongData({ 
       title: song.title, 
       artist: song.artist, 
       duration: song.duration || 0 
     });
-    
-    // 3. Show the existing cover in the preview box
     setPreview(song.cover);
     
-    // 4. Scroll the form panel to the top so you can see the data
     const formPanel = document.querySelector('.bento-scrollbar');
     if (formPanel) formPanel.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -120,9 +111,8 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     const formData = new FormData();
     formData.append('title', songData.title);
     formData.append('artist', songData.artist);
-    formData.append('userId', localStorage.getItem('userId'));
+    formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
     
-    // Only append files if you actually picked NEW ones
     if (audioFile) formData.append('audio', audioFile);
     if (coverFile) formData.append('cover', coverFile);
 
@@ -133,13 +123,16 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     const method = editingSongId ? 'PATCH' : 'POST';
 
     try {
-      const res = await fetch(url, { method: method, body: formData });
+      const res = await fetch(url, { 
+        method: method, 
+        body: formData,
+        credentials: 'include' // <-- SECURED
+      });
       
       if (res.ok) {
         const result = await res.json();
         
         if (editingSongId) {
-          // Update the song in your "Manage Library" list instantly
           setExistingSongs(prev => prev.map(s => s._id === editingSongId ? result : s));
           alert("Song updated successfully!");
         } else {
@@ -147,7 +140,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
           alert("Song uploaded successfully!");
         }
 
-        // RESET EVERYTHING TO DEFAULT
         setEditingSongId(null);
         setSongData({ title: '', artist: '', duration: 0 });
         setPreview(null);
@@ -173,8 +165,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
       return;
     }
 
-    // Capture the name of the folder from the first file's directory path string parameters
-    // e.g., "Marathi_Hits/song.mp3" -> extracts "Marathi Hits"
     let folderName = "Curated Folder Batch";
     if (audioFiles[0].webkitRelativePath) {
       folderName = audioFiles[0].webkitRelativePath.split('/')[0].replace(/_/g, ' ');
@@ -205,12 +195,11 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     };
 
     try {
-      // 1. Process all concurrent asset uploads to Cloudinary/MongoDB
       const uploadPromises = audioFiles.map(async (file, index) => {
         const metadata = await extractMetadata(file);
         const formData = new FormData();
         formData.append('audio', file);
-        formData.append('userId', localStorage.getItem('userId'));
+        formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
         formData.append('title', metadata.title);
         formData.append('artist', metadata.artist);
         if (metadata.coverFile) formData.append('cover', metadata.coverFile);
@@ -218,6 +207,7 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
         const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0);
 
         return axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
+          withCredentials: true, // <-- AXIOS SECURE COOKIE ATTACHMENT
           onUploadProgress: (progressEvent) => {
             fileProgressTracker[index] = progressEvent.loaded;
             const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
@@ -227,18 +217,16 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
           }
         }).then((res) => {
           setUploadStats(prev => ({ ...prev, current: Math.min(prev.current + 1, audioFiles.length) }));
-          return res.data; // This returns the newly created Song document with its fresh _id
+          return res.data; 
         });
       });
 
       const uploadedTracks = await Promise.all(uploadPromises);
       
-      // Update global songs state registry context
       if (typeof setPlaylist === 'function') {
         setPlaylist(prev => [...uploadedTracks, ...prev]);
       }
 
-      // 2. RUN AUTO-CURATION: Extract the new song IDs array mapping structure
       const newlyCreatedSongIds = uploadedTracks.map(track => track._id);
       
       const curationResponse = await fetch(`${API_BASE_URL}/api/playlists/bulk-curate`, {
@@ -247,8 +235,9 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
         body: JSON.stringify({
           playlistName: folderName,
           songIds: newlyCreatedSongIds,
-          userId: localStorage.getItem('userId')
-        })
+          userId: currentUser?._id // <-- CONTEXT IDENTITY
+        }),
+        credentials: 'include' // <-- SECURED
       });
 
       if (curationResponse.ok) {
@@ -290,7 +279,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
         {/* LEFT: UPLOAD FORM (Fixed Width) */}
         <div style={{ width: '400px', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '40px', overflowY: 'auto' }} className="bento-scrollbar"> 
           
-          {/* Wrap title and button in this flex div */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
               <UploadCloud size={20} color="#10b981" /> 
@@ -338,7 +326,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
               {preview ? (
                 <>
                   <img 
-                    /* Use the current track's cover or the logo if empty */
                     src={preview || "/Groove.png"} 
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     alt="Preview" 
@@ -347,7 +334,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                       e.target.src = "/Groove.png";
                     }}
                   />
-                  {/*<img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />*/}
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }} onMouseOver={(e) => e.currentTarget.style.opacity=1} onMouseOut={(e) => e.currentTarget.style.opacity=0}>
                     <p style={{ fontWeight: '80x0', fontSize: '12px' }}>CHANGE COVER</p>
                   </div>
@@ -369,7 +355,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                     <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
                   ) : (
                     <div style={{ textAlign: 'center', opacity: 0.3 }}>
-                      {/* USE YOUR LOGO HERE INSTEAD OF THE ICON */}
                       <img 
                         src="/Groove.png" 
                         style={{ width: '180px', marginBottom: '10px', filter: 'grayscale(1)' }} 
@@ -429,7 +414,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
             </button>
           </form>
 
-          {/* ADD THE BULK SECTION HERE */}
           <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <FolderPlus size={20} color="#10b981" /> 
@@ -458,7 +442,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                 Select folders to automatically<br/>create grouped playlists
               </p>
 
-              {/* ADD THE PROGRESS BAR HERE */}
               {uploadProgress > 0 && (
                 <div style={{ width: '100%', marginTop: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -516,7 +499,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                 borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', gap: '20px'
               }}>
                 <img 
-                  /* Use the current track's cover or the logo if empty */
                   src={song.cover || "/Groove.png"} 
                   style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }}
                   alt="" 
@@ -525,7 +507,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                     e.target.src = "/Groove.png";
                   }}
                 />
-                {/*<img src={song.cover} style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }} alt="" />*/}
                 <div style={{ flex: 1 }}>
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>{song.title}</h4>
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{song.artist}</p>
@@ -540,7 +521,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
         </div>
       </div>
 
-      {/* Internal CSS for Studio styling */}
       <style>{`
         .studio-input {
           width: 100%;

@@ -1,34 +1,47 @@
 import React, { useState } from 'react';
 import { Globe, Apple, ArrowLeft, Headphones, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // <-- NEW
+import { useNavigate } from 'react-router-dom';
+import { usePlayer } from './context/PlayerContext';
 import { API_BASE_URL } from './config';
 
 function Login() {
-  const navigate = useNavigate(); // <-- NEW
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { setCurrentUser } = usePlayer();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        // Use the formData object directly
+        body: JSON.stringify(formData), 
+        credentials: 'include' // <-- SECURED: Accepts the HTTP-only cookie
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('userId', data.userId);
-        localStorage.setItem('userEmail', formData.email);
-        localStorage.setItem('role', data.role);
-        navigate('/'); // <-- Send to player on success
+        // 1. NO MORE LOCAL STORAGE! 
+        
+        // 2. Set the global user state via Context
+        setCurrentUser({ 
+          _id: data.userId, 
+          email: formData.email, 
+          role: data.role 
+        });
+        
+        // 3. Send to player on success
+        navigate('/'); 
       } else {
         alert(data.message || "Invalid Email or Password");
       }
     } catch (err) {
+      console.error("Login fetch error:", err);
       alert("Login failed. Check if your server is running.");
     } finally {
       setIsSubmitting(false);
@@ -39,7 +52,7 @@ function Login() {
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
       
       <button 
-        onClick={() => navigate('/')} // <-- Navigate to home
+        onClick={() => navigate('/')}
         style={{ 
           position: 'absolute', top: '30px', left: '30px', zIndex: 100, 
           background: '#121212', border: '1px solid #222', 
@@ -112,7 +125,7 @@ function Login() {
               />
               <div style={{ marginTop: '8px', textAlign: 'right' }}>
                 <span 
-                  onClick={() => navigate('/forgot-password')} // <-- Navigate to forgot password
+                  onClick={() => navigate('/forgot-password')}
                   style={{ color: '#64748b', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}
                 >
                   Forgot password?

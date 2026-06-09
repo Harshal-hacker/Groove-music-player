@@ -1,15 +1,10 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
-  //username: { 
-    //type: String, 
-    //required: true, 
-    //unique: true 
-  //},
   email: {
     type: String,
     required: true,
-    unique: true, // Prevents two users from having the same email
+    unique: true,
   },
   password: {
     type: String,
@@ -28,21 +23,25 @@ const UserSchema = new mongoose.Schema({
   role: { 
     type: String, 
     default: 'user' 
-  }, // Roles: 'user' or 'admin'
-  
-  // We store an array of Song IDs that this specific user has liked
+  },
   likedSongs: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Song' // Links to your existing Song model
+    ref: 'Song'
   }],
-  lastPlayback: {
-    songId: { 
-      type: String, 
+  activeSession: {
+    trackId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'Song', 
       default: null 
     },
     currentTime: { 
       type: Number, 
       default: 0 
+    },
+    playlistId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'Playlist', 
+      default: null 
     }
   },
   resetPasswordToken: { 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { usePlayer } from '../context/PlayerContext';// <-- 1. IMPORT CONTEXT
 
 export default function Sidebar({
   isAuthenticated, 
@@ -15,7 +16,10 @@ export default function Sidebar({
   handleContextMenu
 }) {
   const navigate = useNavigate();
-  const currentUserId = localStorage.getItem('userId');
+  
+  // 2. USE SECURE CONTEXT INSTEAD OF LOCAL STORAGE
+  const { currentUser } = usePlayer();
+  const currentUserId = currentUser?._id;
 
   // Filter out public/curated playlists so only the user's personal ones show here
   const userPlaylistsOnly = userPlaylists.filter(pl => 
@@ -101,15 +105,23 @@ export default function Sidebar({
             {userPlaylistsOnly.length > 0 ? (
               userPlaylistsOnly.map((pl) => (
                 <div 
-                 key={pl._id} 
-                 onClick={() => navigate(`/playlist/${pl._id}`)} 
-                  className="sidebar-playlist-item" 
-                  onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'sidebar')}
-                  style={{ 
+                    key={pl._id} 
+                    onClick={() => { 
+                    // 1. Update the state so the Feed knows which playlist is active
+                    setSelectedPlaylist(pl._id); 
+                    setActiveCategory('All'); 
+                    
+                    // 2. Change the URL for browser history/professional behavior
+                    navigate(`/playlist/${pl._id}`); 
+                    }} 
+                    className="sidebar-playlist-item" 
+                    onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'sidebar')}
+                    style={{ 
                     padding: '5px 18px', borderRadius: '15px', display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer', transition: '0.2s',
                     backgroundColor: selectedPlaylist === pl._id ? 'rgba(16, 185, 129, 0.15)' : 'transparent', 
                     border: selectedPlaylist === pl._id ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
-                  }}>
+                    }}
+                >
                   <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                     <img 
                       src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} alt="cover" onError={(e) => e.target.src = "/Groove.png"}

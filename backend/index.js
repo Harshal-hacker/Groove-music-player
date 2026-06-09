@@ -1,26 +1,30 @@
-require('dotenv').config(); // 1. Loads your secret password from the .env file
+require('dotenv').config(); 
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');     
+const jwt = require('jsonwebtoken');       // <-- ADDED FOR JWT
+const cookieParser = require('cookie-parser'); // <-- ADDED FOR COOKIES
 
 const app = express();
 
 const corsOptions = {
-  origin: true, // Dynamically accepts your live deployed frontend URL
+  origin: true, 
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true,
+  credentials: true, // CRITICAL: This allows cookies to pass between frontend and backend
 };
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(cookieParser()); // <-- ADDED: Tells Express how to read incoming cookies
+
 const PORT = process.env.PORT || 5000;
 const Playlist = require('./models/Playlist');
-const User = require('./models/User'); // Must be imported
-const bcrypt = require('bcryptjs');     // Must be installed via npm
+const User = require('./models/User'); 
 
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -34,26 +38,25 @@ cloudinary.config({
 });
 console.log("Checking Cloudinary Config...");
 console.log("Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME);
-console.log("API Key:", process.env.CLOUDINARY_API_KEY ? "FOUND" : "MISSING");
 
 // 2. Setup Storage Engine
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'groove_music',
-    resource_type: 'auto', // CRITICAL: Allows both .mp3 and .jpg files
+    resource_type: 'auto', 
   },
 });
 
-// 3. Initialize the 'upload' middleware (This fixes your error!)
+// 3. Initialize the 'upload' middleware
 const upload = multer({ storage: storage });
 
-// 2. Connect to MongoDB Cloud
+// Connect to MongoDB Cloud
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB Atlas!'))
   .catch((err) => console.error('❌ Database connection failed:', err));
 
-// 3. Define the Blueprint (Schema) for a Song
+// Define the Blueprint (Schema) for a Song
 const songSchema = new mongoose.Schema({
   title: { type: String, required: true },
   artist: { type: String, required: true },
@@ -64,181 +67,83 @@ const songSchema = new mongoose.Schema({
   isLossless: { type: Boolean, default: false }
 });
 
-// 4. Create the Model (This creates a 'songs' collection in your database)
 const Song = mongoose.model('Song', songSchema);
 
+
 // =========================================================================
-// SONG TRACK PATHS & API ENDPOINTS
+// SECURITY MIDDLEWARE & TOKEN HELPERS
 // =========================================================================
 
-// Fetch songs from the database
-app.get('/api/songs', async (request, response) => {
+// Helper function to generate token and set the cookie
+const sendAuthCookie = (res, user) => {
+  const payload = { userId: user._id, role: user.role };
+  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+  res.cookie('auth_token', token, {
+    httpOnly: true,  // JavaScript cannot access this cookie (Stops XSS)
+    secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
+    sameSite: 'strict', // Stops CSRF attacks
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 Days
+  });
+};
+
+// Middleware to protect routes that require a logged-in user
+const verifyToken = (req, res, next) => {
+  const token = req.cookies.auth_token;
+  if (!token) return res.status(401).json({ message: "Access Denied. No token provided." });
+
   try {
-    const allSongs = await Song.find(); 
-    response.json(allSongs);
-  } catch (error) {
-    console.error("The REAL database error is:", error); 
-    response.status(500).json({ error: "Failed to fetch songs" });
-  }
-});
-
-// Add a new song to the database (Upload)
-app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
-  try {
-    const { title, artist, duration, userId } = req.body;
-
-    // 1. ADMIN CHECK
-    const user = await User.findById(userId);
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ message: "Access Denied" });
-    }
-
-    // 2. STRICTOR DUPLICATE CHECK
-    // If a song with the same title and artist exists, return it immediately instead of re-uploading
-    const existingSong = await Song.findOne({ 
-      title: { $regex: new RegExp(`^${title.trim()}$`, 'i') }, 
-      artist: { $regex: new RegExp(`^${artist.trim()}$`, 'i') } 
-    });
-
-    if (existingSong) {
-      console.log(`♻️ Duplicate song found: "${title}" by ${artist}. Using existing record.`);
-      return res.status(200).json(existingSong); 
-    }
-
-    // 3. CREATE NEW IF NOT FOUND
-    if (!req.files['audio']) {
-      return res.status(400).json({ message: "Audio file is required for new track uploads." });
-    }
-
-    const newSong = new Song({
-      title: title.trim(),
-      artist: artist.trim(),
-      duration: duration ? parseFloat(duration) : 0, 
-      src: req.files['audio'][0].path,
-      cover: req.files['cover'] ? req.files['cover'][0].path : "https://res.cloudinary.com/your_cloud/image/upload/v1/Groove.png", 
-    });
-
-    await newSong.save();
-    res.status(201).json(newSong);
-
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = verified; // Attaches { userId, role } to the request
+    next();
   } catch (err) {
-    console.error("Upload Error:", err);
-    res.status(500).json({ error: err.message });
+    res.clearCookie('auth_token');
+    res.status(401).json({ message: "Invalid or expired token." });
   }
-});
+};
 
-// Update an individual track audio duration mapping parameter hook explicitly
-app.patch('/api/songs/:id/duration', async (req, res) => {
-  try {
-    const { duration } = req.body;
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id,
-      { duration: duration },
-      { returnDocument: 'after' }
-    );
-    res.json(updatedSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Main Track updates handler (Handles metadata/artwork visual saves)
-app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
-  try {
-    const { title, artist } = req.body;
-    let updateData = { title, artist };
-
-    if (req.files) {
-      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
-      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
-    }
-
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id, 
-      updateData, 
-      { returnDocument: 'after' } 
-    );
-
-    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
-    res.status(200).json(updatedSong);
-  } catch (error) {
-    console.error("Update Error:", error);
-    res.status(500).json({ message: "Server error during update", error: error.message });
-  }
-});
-
-// Delete a single music track document from the Atlas engine data trees
-app.delete('/api/songs/:id', async (req, res) => {
-  try {
-    const { userId } = req.query; 
-
-    const user = await User.findById(userId);
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ message: "Access Denied: Admin only." });
-    }
-
-    const deletedSong = await Song.findByIdAndDelete(req.params.id);
-    if (!deletedSong) return res.status(404).json({ message: "Song not found" });
-
-    res.status(200).json({ message: "Song deleted successfully!" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // =========================================================================
 // USER MANAGEMENTS & AUTH PATHS
 // =========================================================================
 
-// Route to get user profile data packet structures safely
-app.get('/api/users/:id', async (req, res) => {
+// --- NEW: SILENT AUTHENTICATION CHECKER ---
+// Frontend calls this on page load to see if a valid cookie exists
+app.get('/api/auth/me', verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    // Make sure .populate('activeSession.trackId') is here!
+    const user = await User.findById(req.user.userId)
+      .select('-password')
+      .populate('activeSession.trackId'); 
+      
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+    
+    res.status(200).json({ user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// Route to register heart indicators to accounts (Toggle Likes)
-app.patch('/api/users/toggle-like', async (req, res) => {
-  try {
-    const { userId, songId } = req.body;
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    const index = user.likedSongs.findIndex(id => id.toString() === songId);
-    if (index > -1) {
-      user.likedSongs.splice(index, 1); 
-    } else {
-      user.likedSongs.push(songId); 
-    }
-
-    await user.save();
-    res.json({ likedSongs: user.likedSongs });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// --- NEW: LOGOUT ROUTE ---
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('auth_token'); // Destroys the cookie
+  res.status(200).json({ message: "Logged out successfully" });
 });
+
 
 // Account Creation Endpoint (Sign Up)
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    // Extract the new fields from the frontend request
     const { email, password, profileName, dob, gender } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Email is already registered." });
     }
 
-    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create the new user with the Spotify-style data
     const newUser = new User({
       email,
       password: hashedPassword,
@@ -249,7 +154,9 @@ app.post('/api/auth/signup', async (req, res) => {
 
     await newUser.save();
     
-    // Automatically log them in by returning their new ID
+    // Send the secure JWT cookie instantly upon signup
+    sendAuthCookie(res, newUser);
+    
     res.status(201).json({ 
       userId: newUser._id, 
       role: newUser.role,
@@ -277,6 +184,9 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: "Invalid Email or Password" });
     }
 
+    // Send the secure JWT cookie
+    sendAuthCookie(res, user);
+
     res.status(200).json({ 
       message: "Login successful", 
       userId: user._id,
@@ -288,9 +198,152 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-console.log("Email User is:", process.env.EMAIL_USER);
+// Route to get user profile data
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-// Set up the email sender
+// Route to register heart indicators
+app.patch('/api/users/toggle-like', async (req, res) => {
+  try {
+    const { userId, songId } = req.body;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const index = user.likedSongs.findIndex(id => id.toString() === songId);
+    if (index > -1) {
+      user.likedSongs.splice(index, 1); 
+    } else {
+      user.likedSongs.push(songId); 
+    }
+
+    await user.save();
+    res.json({ likedSongs: user.likedSongs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// SONG TRACK PATHS & API ENDPOINTS
+// =========================================================================
+
+// Fetch songs from the database
+app.get('/api/songs', async (request, response) => {
+  try {
+    const allSongs = await Song.find(); 
+    response.json(allSongs);
+  } catch (error) {
+    console.error("The REAL database error is:", error); 
+    response.status(500).json({ error: "Failed to fetch songs" });
+  }
+});
+
+// Add a new song to the database (Upload)
+app.post('/api/songs/upload', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
+  try {
+    const { title, artist, duration, userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access Denied" });
+    }
+
+    const existingSong = await Song.findOne({ 
+      title: { $regex: new RegExp(`^${title.trim()}$`, 'i') }, 
+      artist: { $regex: new RegExp(`^${artist.trim()}$`, 'i') } 
+    });
+
+    if (existingSong) {
+      return res.status(200).json(existingSong); 
+    }
+
+    if (!req.files['audio']) {
+      return res.status(400).json({ message: "Audio file is required for new track uploads." });
+    }
+
+    const newSong = new Song({
+      title: title.trim(),
+      artist: artist.trim(),
+      duration: duration ? parseFloat(duration) : 0, 
+      src: req.files['audio'][0].path,
+      cover: req.files['cover'] ? req.files['cover'][0].path : "https://res.cloudinary.com/your_cloud/image/upload/v1/Groove.png", 
+    });
+
+    await newSong.save();
+    res.status(201).json(newSong);
+
+  } catch (err) {
+    console.error("Upload Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/songs/:id/duration', async (req, res) => {
+  try {
+    const { duration } = req.body;
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id,
+      { duration: duration },
+      { returnDocument: 'after' }
+    );
+    res.json(updatedSong);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/songs/:id', upload.fields([{ name: 'audio' }, { name: 'cover' }]), async (req, res) => {
+  try {
+    const { title, artist } = req.body;
+    let updateData = { title, artist };
+
+    if (req.files) {
+      if (req.files['audio']) updateData.src = req.files['audio'][0].path;
+      if (req.files['cover']) updateData.cover = req.files['cover'][0].path;
+    }
+
+    const updatedSong = await Song.findByIdAndUpdate(
+      req.params.id, 
+      updateData, 
+      { returnDocument: 'after' } 
+    );
+
+    if (!updatedSong) return res.status(404).json({ message: "Song not found" });
+    res.status(200).json(updatedSong);
+  } catch (error) {
+    console.error("Update Error:", error);
+    res.status(500).json({ message: "Server error during update", error: error.message });
+  }
+});
+
+app.delete('/api/songs/:id', async (req, res) => {
+  try {
+    const { userId } = req.query; 
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: "Access Denied: Admin only." });
+    }
+
+    const deletedSong = await Song.findByIdAndDelete(req.params.id);
+    if (!deletedSong) return res.status(404).json({ message: "Song not found" });
+
+    res.status(200).json({ message: "Song deleted successfully!" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =========================================================================
+// PASSWORD RESET ENDPOINTS
+// =========================================================================
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -299,33 +352,22 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// =========================================================================
-// BULLETPROOF SECURITY: RATE LIMITERS
-// =========================================================================
-
-// 1. Prevent Email Spam (Max 3 reset requests per hour per IP)
 const forgotPasswordLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 Hour window
-  max: 3, // Limit each IP to 3 requests per windowMs
+  windowMs: 1 * 60 * 1000, 
+  max: 3, 
   message: { message: "Too many password reset requests from this IP, please try again after an hour." },
   standardHeaders: true, 
   legacyHeaders: false, 
 });
 
-// 2. Prevent Brute-Force Guessing (Max 5 guesses per 15 minutes per IP)
 const resetPasswordLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 Minute window
-  max: 5, // Limit each IP to 5 guesses per windowMs
+  windowMs: 15 * 60 * 1000, 
+  max: 5, 
   message: { message: "Too many incorrect guesses. Your IP has been blocked for 15 minutes for security." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// =========================================================================
-// PASSWORD RESET ENDPOINTS
-// =========================================================================
-
-// 1. Generate and Email the reset code (Apply forgotPasswordLimiter here)
 app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
   try {
     const { email } = req.body;
@@ -335,10 +377,8 @@ app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) =>
       return res.json({ message: "If an account exists, a reset code has been sent." });
     }
 
-    // Generate a secure 6-character reset code
     const resetToken = crypto.randomBytes(3).toString('hex').toUpperCase();
     
-    // Save to database with a 15-MINUTE expiration
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; 
     await User.updateOne(
@@ -351,7 +391,6 @@ app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) =>
       }
     );
 
-    // Send the email
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: user.email,
@@ -373,12 +412,10 @@ app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) =>
   }
 });
 
-// 2. Apply the new password (Apply resetPasswordLimiter here)
 app.patch('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     
-    // Find user with exact token that hasn't expired
     const user = await User.findOne({ 
       resetPasswordToken: token, 
       resetPasswordExpires: { $gt: Date.now() } 
@@ -386,11 +423,9 @@ app.patch('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => 
 
     if (!user) return res.status(400).json({ message: "Invalid or expired code." });
 
-    // Hash new password and save
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     
-    // Clear the token
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await User.updateOne(
@@ -408,13 +443,11 @@ app.patch('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => 
   }
 });
 
+
 // =========================================================================
-// PLAYLISTS COMPILATION ENDPOINTS (FIXED ORDER PRIORITY LOGIC)
+// PLAYLISTS COMPILATION ENDPOINTS
 // =========================================================================
 
-// --- CRITICAL FIX 1: EXPLICIT NAMESPACE POST PATHS SET HIGHEST IN STREAM TREE ---
-
-// ADMIN ONLY: CREATE DIRECT CURATED READY-MADE PLAYLIST CONTAINER
 app.post('/api/playlists/curated', async (req, res) => {
   try { 
     const { name, userId, category } = req.body;
@@ -438,7 +471,6 @@ app.post('/api/playlists/curated', async (req, res) => {
   }
 });
 
-// ADMIN ONLY: BUNDLE BULK TRACKS INTO INSTANT READY-MADE PLAYLIST
 app.post('/api/playlists/bulk-curate', async (req, res) => {
   try {
     const { playlistName, songIds, userId } = req.body;
@@ -460,7 +492,6 @@ app.post('/api/playlists/bulk-curate', async (req, res) => {
   }
 });
 
-// Standard user inline manual custom playlist compilation handler
 app.post('/api/playlists', async (req, res) => {
   try {
     const { name, createdBy } = req.body;
@@ -472,18 +503,12 @@ app.post('/api/playlists', async (req, res) => {
   }
 });
 
-// --- CRITICAL FIX 2: GLOBAL LIST READ GETTERS PLACED BELOW EXPLICIT SEED ROUTERS ---
-
-// Get all library playlists (Serves curated mixes to guests, personal rows to logged-in accounts)
 app.get('/api/playlists', async (req, res) => {
   const { userId } = req.query;
   
   try {
     let queryCondition = {};
-    const hasValidUser = userId && 
-                         userId !== 'null' && 
-                         userId !== 'undefined' && 
-                         userId.trim() !== '';
+    const hasValidUser = userId && userId !== 'null' && userId !== 'undefined' && userId.trim() !== '';
 
     if (hasValidUser) {
       queryCondition = {
@@ -505,9 +530,6 @@ app.get('/api/playlists', async (req, res) => {
   }
 });
 
-// --- CRITICAL FIX 3: GENERIC VARIABLE PARAMETER SLUGS (:id) PLACED LOWEST ON THE GRID ---
-
-// Rename a custom playlist text heading identifier node
 app.patch('/api/playlists/:id/rename', async (req, res) => {
   try {
     const { name } = req.body;
@@ -522,7 +544,6 @@ app.patch('/api/playlists/:id/rename', async (req, res) => {
   }
 });
 
-// Insert a specific song reference inside child relational collection indexes
 app.patch('/api/playlists/:id/add-song', async (req, res) => {
   try {
     const { songId, userId } = req.body;
@@ -547,7 +568,6 @@ app.patch('/api/playlists/:id/add-song', async (req, res) => {
   }
 });
 
-// Drop a song reference from an active music playlist dashboard collection index
 app.patch('/api/playlists/:id/remove-song', async (req, res) => {
   try {
     const { songId } = req.body;
@@ -563,7 +583,6 @@ app.patch('/api/playlists/:id/remove-song', async (req, res) => {
   }
 });
 
-// Toggle follow action maps for public curated playlists row collections
 app.patch('/api/playlists/:id/follow', async (req, res) => {
   const { userId } = req.body;
   const playlistId = req.params.id;
@@ -574,9 +593,7 @@ app.patch('/api/playlists/:id/follow', async (req, res) => {
 
   try {
     const playlist = await Playlist.findById(playlistId);
-    if (!playlist) {
-      return res.status(404).json({ message: "Target playlist not found." });
-    }
+    if (!playlist) return res.status(404).json({ message: "Target playlist not found." });
 
     const isFollowing = playlist.followers.includes(userId);
 
@@ -591,28 +608,21 @@ app.patch('/api/playlists/:id/follow', async (req, res) => {
     const updatedPlaylist = await Playlist.findById(playlistId).populate('songIds');
     res.status(200).json(updatedPlaylist);
   } catch (err) {
-    console.error("Library sync failure:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// Clear a collection structural element array entirely (Delete Playlist)
 app.delete('/api/playlists/:id', async (req, res) => {
-  console.log("Delete request received for ID:", req.params.id); 
   try {
     const deletedPlaylist = await Playlist.findByIdAndDelete(req.params.id);
-    if (!deletedPlaylist) {
-      return res.status(404).json({ message: "Playlist not found in DB" });
-    }
+    if (!deletedPlaylist) return res.status(404).json({ message: "Playlist not found in DB" });
+    
     res.status(200).json({ message: "Deleted" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// =========================================================================
-// SYNC PLAYBACK STATE
-// =========================================================================
 app.patch('/api/users/:id/playback', async (req, res) => {
   try {
     const { songId, currentTime } = req.body;
@@ -628,6 +638,25 @@ app.patch('/api/users/:id/playback', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// =========================================================================
+// CROSS-DEVICE SYNC ENDPOINT
+// =========================================================================
+app.patch('/api/user/sync-playback', verifyToken, async (req, res) => {
+  try {
+    const { trackId, time, playlistId } = req.body; // Add playlistId
+    const userId = req.user.userId;
+
+    await User.findByIdAndUpdate(userId, { 
+      $set: { 
+        'activeSession.trackId': trackId,
+        'activeSession.currentTime': time,
+        'activeSession.playlistId': playlistId // Save it!
+      } 
+    });
+    res.status(200).json({ message: "Synced" });
+  } catch (err) { res.status(500).json({ error: "Failed" }); }
 });
 
 app.listen(PORT, '0.0.0.0', () => {

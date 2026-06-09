@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, ChevronRight, Shuffle, SkipBack, SkipForward, Repeat, ListMusic, Volume2, VolumeX, Search, Settings, Heart, PlusCircle, FolderPlus, Share2, Link, Trash2, X, Plus } from 'lucide-react';
+import { Play, Pause, ChevronRight, Shuffle, SkipBack, SkipForward, Repeat, ListMusic, Volume2, VolumeX, Search, Settings, Heart, PlusCircle, FolderPlus, Share2, Link, Trash2, X, Plus, CheckCircle2 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
@@ -20,7 +20,8 @@ export default function MainFeed({
   const { 
     playlist, currentTrack, currentTrackIndex, setCurrentTrackIndex, 
     isPlaying, setIsPlaying, setPlaybackContext, isPlayingFromQueueRef,
-    setActivePlaylistName, queue, setQueue
+    setActivePlaylistName, queue, setQueue,
+    currentUser // <-- Added currentUser to pull from Context securely
   } = usePlayer();
   const navigate = useNavigate();
 
@@ -52,7 +53,8 @@ export default function MainFeed({
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/rename`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tempName })
+        body: JSON.stringify({ name: tempName }),
+        credentials: 'include' // <-- VIP PASS SECURE COOKIE ATTACHED
       });
       if (response.ok) {
         const updatedPlaylist = await response.json();
@@ -68,13 +70,16 @@ export default function MainFeed({
   const handleAddToPlaylist = async (songId, playlistId) => {
     const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
     const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
-    const userId = localStorage.getItem('userId');
+    
+    // Instead of localStorage, use the secure context identity
+    const userId = currentUser?._id; 
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId }) 
+        body: JSON.stringify({ songId, userId }),
+        credentials: 'include' // <-- VIP PASS SECURE COOKIE ATTACHED
       });
 
       if (response.ok) {
@@ -84,6 +89,28 @@ export default function MainFeed({
         setTimeout(() => setToast(null), 3000);
       }
     } catch (error) { console.error(error); }
+  };
+
+  const handleRemoveFromPlaylist = async (songId, playlistId) => {
+    const userId = currentUser?._id;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId, userId }),
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const updatedPlaylist = await response.json();
+        setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
+        setToast({ message: "Removed from playlist", type: 'success' });
+        setTimeout(() => setToast(null), 3000);
+      }
+    } catch (error) {
+      console.error("Failed to remove song:", error);
+    }
   };
 
   return (
@@ -135,9 +162,9 @@ export default function MainFeed({
                   </div>
                 </div>
 
-                <div id={shelfId} style={{ display: 'flex', gap: '20px', overflowX: 'hidden', scrollBehavior: 'smooth', padding: '4px 0' }}>
+                <div id={shelfId} style={{ display: 'flex', gap: '20px', overflowX: 'hidden', scrollBehavior: 'smooth', padding: '16px 4px' }}>
                   {categoryPlaylists.map(pl => {
-                    const isFollowed = pl.followers?.includes(localStorage.getItem('userId'));
+                    const isFollowed = pl.followers?.includes(currentUser?._id);
 
                     return (
                       <div 
@@ -176,8 +203,8 @@ export default function MainFeed({
         })()
       )}
 
-      {/* 2. SEARCH RESULTS / ALL SONGS LIST */}
-      {activeCategory === 'All' && !selectedPlaylist && (
+      {/* 2. SEARCH RESULTS / ALL SONGS LIST - NOW ONLY SHOWS IF A SEARCH IS ACTIVE */}
+      {((activeCategory === 'All' && !selectedPlaylist && debouncedQuery.trim() !== '') || (activeCategory !== 'All' && !selectedPlaylist)) && (
         <>
           <div style={{ marginBottom: '50px' }}>
             <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>
@@ -194,8 +221,10 @@ export default function MainFeed({
                   key={track._id} className={`advanced-music-card ${isActive ? 'active' : ''}`}
                   onClick={() => { 
                     setPlaybackContext(filteredPlaylist);
+                    setSelectedPlaylist(selectedPlaylist);
                     setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
                     setIsPlaying(true); 
+                    syncPlayback(track._id, 0, selectedPlaylist);
                     if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false; 
                     const currentListName = selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "All Songs";
                     // setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : currentListName);
@@ -264,26 +293,30 @@ export default function MainFeed({
                   <button 
                     className="groove-play-btn" 
                     onClick={() => {
-                      setPlaybackContext(filteredPlaylist); 
-                      // setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
-                      if (filteredPlaylist.length > 0) {
+                        setPlaybackContext(filteredPlaylist); 
+                        
+                        // UNCOMMENT AND UPDATE THIS LINE:
+                        setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
+                        
+                        if (filteredPlaylist.length > 0) {
                         setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
                         setIsPlaying(true);
                         if(isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
-                      }
+                        }
                     }}
-                  >
+                    >
                     {isPlaying && filteredPlaylist.some(s => s._id === currentTrack?._id) ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" style={{marginLeft: '4px'}} />}
                   </button>
                   
                   {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
                     <button
                       onClick={async () => {
-                        const userId = localStorage.getItem('userId');
+                        const userId = currentUser?._id;
                         if (!userId) return alert("Please log in to save playlists!");
                         try {
                           const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, {
-                            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId })
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+                            credentials: 'include' // <-- VIP PASS SECURE COOKIE ATTACHED
                           });
                           if (res.ok) {
                             const updatedPlaylist = await res.json();
@@ -301,7 +334,7 @@ export default function MainFeed({
                       onMouseOver={(e) => e.currentTarget.style.borderColor = '#10b981'}
                       onMouseOut={(e) => e.currentTarget.style.borderColor = '#333'}
                     >
-                      {userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(localStorage.getItem('userId')) ? "REMOVE FROM LIBRARY" : "SAVE TO LIBRARY"}
+                      {userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "REMOVE FROM LIBRARY" : "SAVE TO LIBRARY"}
                     </button>
                   )}
 
@@ -332,7 +365,10 @@ export default function MainFeed({
                   key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
                   onClick={() => { 
                     setPlaybackContext(filteredPlaylist); 
-                    // setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
+                    
+                    // UNCOMMENT THIS HERE TOO:
+                    setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
+                    
                     setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
                     setIsPlaying(true); 
                     if(isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
@@ -360,62 +396,81 @@ export default function MainFeed({
       {showAddTrackModal && selectedPlaylist && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
           <div style={{
             width: '100%', maxWidth: '500px', height: '70vh', maxHeight: '600px',
             backgroundColor: '#121212', border: '1px solid #333',
-            borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            borderRadius: '28px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
           }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Header */}
+            <div style={{ padding: '24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#fff' }}>Add Tracks to Mix</h3>
-                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#10b981', fontWeight: '700' }}>
+                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#fff', letterSpacing: '-0.5px' }}>Add Tracks</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase' }}>
                   {userPlaylists.find(p => p._id === selectedPlaylist)?.name}
                 </p>
               </div>
-              <button onClick={() => setShowAddTrackModal(false)} style={{ background: '#0a0a0a', border: '1px solid #333', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer' }}>
-                <X size={16} />
+              <button onClick={() => setShowAddTrackModal(false)} style={{ background: '#1a1a1a', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#333'} onMouseOut={e => e.currentTarget.style.background = '#1a1a1a'}>
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #333', background: '#0a0a0a' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+            {/* Search Bar */}
+            <div style={{ padding: '16px 24px' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Search size={18} style={{ position: 'absolute', left: '16px', color: '#64748b' }} />
                 <input 
-                  type="text" placeholder="Search globally for a track..." value={addTrackSearch} onChange={(e) => setAddTrackSearch(e.target.value)}
-                  style={{ width: '100%', padding: '12px 12px 12px 42px', borderRadius: '12px', border: '1px solid #333', backgroundColor: '#121212', color: 'white', outline: 'none', fontSize: '14px' }}
+                  type="text" placeholder="Search tracks..." value={addTrackSearch} onChange={(e) => setAddTrackSearch(e.target.value)}
+                  style={{ width: '100%', padding: '14px 14px 14px 44px', borderRadius: '14px', border: '1px solid #333', backgroundColor: '#0a0a0a', color: 'white', outline: 'none', fontSize: '14px', fontWeight: '600' }}
                 />
               </div>
             </div>
 
-            <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
+            {/* Track List */}
+            <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
               {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
-                  const targetPlaylistObj = userPlaylists.find(p => p._id === selectedPlaylist);
-                  const isAlreadyAdded = targetPlaylistObj?.songIds?.some(s => (s._id || s) === song._id);
+                  const isAlreadyAdded = userPlaylists.find(p => p._id === selectedPlaylist)?.songIds?.some(s => (s._id || s) === song._id);
 
                   return (
-                    <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '12px', marginBottom: '8px', background: '#0a0a0a', border: '1px solid #333', transition: '0.2s' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <img src={song.cover || "/Groove.png"} alt="" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                    <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '16px', marginBottom: '8px', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#1a1a1a'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <img src={song.cover || "/Groove.png"} alt="" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }} />
                         <div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: isAlreadyAdded ? '#10b981' : '#fff' }}>{song.title}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>{song.artist}</div>
+                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{song.title}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{song.artist}</div>
                         </div>
                       </div>
 
                       {isAlreadyAdded ? (
-                        <div style={{ padding: '6px 12px', borderRadius: '50px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '11px', fontWeight: '800' }}>ADDED</div>
+                        <button 
+                          onClick={() => handleRemoveFromPlaylist(song._id, selectedPlaylist)}
+                          style={{ 
+                            background: 'transparent', 
+                            border: '1px solid #10b981', 
+                            color: '#10b981', 
+                            width: '36px', height: '36px', borderRadius: '50%', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            cursor: 'pointer', transition: '0.2s' 
+                          }}
+                        >
+                          <CheckCircle2 size={18} />
+                        </button>
                       ) : (
                         <button 
                           onClick={() => handleAddToPlaylist(song._id, selectedPlaylist)}
-                          style={{ background: '#121212', border: '1px solid #333', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s' }}
-                          onMouseOver={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                          onMouseOut={(e) => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#fff'; }}
+                          style={{ 
+                            background: '#fff', 
+                            border: 'none', 
+                            color: '#000', 
+                            width: '36px', height: '36px', borderRadius: '50%', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            cursor: 'pointer', transition: '0.2s' 
+                          }}
                         >
-                          <Plus size={16} />
+                          <Plus size={18} />
                         </button>
                       )}
                     </div>

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // <-- 1. IMPORT useNavigate
 import { API_BASE_URL } from './config';
 
 function ResetPassword({ onBackToLogin }) {
+  const navigate = useNavigate(); // <-- 2. INITIALIZE NAVIGATE
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -14,11 +16,13 @@ function ResetPassword({ onBackToLogin }) {
       const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword })
+        body: JSON.stringify({ token, newPassword }),
+        credentials: 'include' // <-- 3. SECURED: Send cookie
       });
+      
       if (response.ok) {
         alert("Password updated! Please log in with your new password.");
-        Maps('/login');
+        navigate('/login'); // <-- 4. FIXED: Changed 'Maps' to 'navigate'
       } else {
         const data = await response.json();
         alert(data.message || "Invalid or expired code.");
@@ -39,7 +43,7 @@ function ResetPassword({ onBackToLogin }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
           <input 
             type="text" placeholder="6-Digit Reset Code" required value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => setToken(e.target.value.toUpperCase())}
             style={{ width: '100%', padding: '16px', background: 'transparent', border: '1px solid #333', borderRadius: '8px', color: '#fff', outline: 'none', textTransform: 'uppercase' }} 
           />
           <input 

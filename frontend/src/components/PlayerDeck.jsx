@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Shuffle, Repeat, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Shuffle, Repeat, Repeat1, ListMusic } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 
 export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
@@ -8,7 +8,7 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
     audioRef, currentTrack, isPlaying, togglePlayPause,
     currentTime, setCurrentTime, duration, volume, setVolume,
     isMuted, setIsMuted, isShuffle, setIsShuffle,
-    isRepeat, setIsRepeat, handleNext, handlePrev, queue
+    repeatMode, setRepeatMode, handleNext, handlePrev, queue
   } = usePlayer();
 
   // Local state for previous volume before muting
@@ -97,6 +97,12 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
     return () => window.removeEventListener('keydown', handleGlobalShortcuts);
   }, [isPlaying, volume, isMuted, preMuteVolume, duration, currentTrack]);
 
+  const toggleRepeat = () => {
+    if (repeatMode === 'off') setRepeatMode('all');
+    else if (repeatMode === 'all') setRepeatMode('one');
+    else setRepeatMode('off');
+  };
+
   return (
     <footer style={{ 
       height: '90px', backgroundColor: '#121212', border: '1px solid #222', borderRadius: '24px',
@@ -134,7 +140,20 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
               {isPlaying ? <Pause size={18} color="#000" fill="#000" /> : <Play size={18} color="#000" fill="#000" style={{ marginLeft: '2px' }} /> }
             </div>
             <SkipForward onClick={handleNext} size={18} fill="#fff" style={{ cursor: 'pointer' }} />
-            <Repeat size={16} onClick={() => setIsRepeat(!isRepeat)} style={{ cursor: 'pointer', color: isRepeat ? '#10b981' : '#444' }} />
+            {/* REPEAT BUTTON LOGIC */}
+            {repeatMode === 'one' ? (
+              <Repeat1 
+                size={18} 
+                onClick={toggleRepeat} 
+                style={{ cursor: 'pointer', color: '#10b981', transition: '0.2s' }} 
+              />
+            ) : (
+              <Repeat 
+                size={18} 
+                onClick={toggleRepeat} 
+                style={{ cursor: 'pointer', color: repeatMode === 'all' ? '#10b981' : '#64748b', transition: '0.2s' }} 
+              />
+            )}
           </div>
 
           <div style={{ width: '100%', maxWidth: '500px', display: 'flex', alignItems: 'center', gap: '12px' }}>

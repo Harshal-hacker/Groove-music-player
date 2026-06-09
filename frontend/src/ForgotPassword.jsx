@@ -4,15 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
 
 function ForgotPassword({ onBackToLogin }) {
-  // Step 1: Request Code | Step 2: Enter Code & New Password
   const navigate = useNavigate();
   const [step, setStep] = useState(1); 
   const [email, setEmail] = useState('');
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // --- NEW: State for inline errors ---
   const [tokenError, setTokenError] = useState('');
 
   // --- 1. Send the email code ---
@@ -23,13 +20,14 @@ function ForgotPassword({ onBackToLogin }) {
       const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email }),
+        credentials: 'include' // <-- SECURED
       });
       
       const data = await response.json();
       
       if (response.ok) {
-        setStep(2); // Move to code verification step
+        setStep(2); 
       } else {
         alert(data.message || "Failed to send reset code. Please try again.");
       }
@@ -44,22 +42,22 @@ function ForgotPassword({ onBackToLogin }) {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTokenError(''); // Clear previous errors before trying again
+    setTokenError(''); 
     
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
         method: 'PATCH', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword })
+        body: JSON.stringify({ token, newPassword }),
+        credentials: 'include' // <-- SECURED
       });
       
       const data = await response.json();
       
       if (response.ok) {
         alert("Password updated successfully! You can now log in.");
-        Maps('/login'); // Send them back to the login page
+        navigate('/login'); // Fixed 'Maps' to 'navigate'
       } else {
-        // --- NEW: Set inline error instead of alert ---
         setTokenError(data.message || "Invalid or expired code.");
       }
     } catch (err) {
@@ -103,10 +101,9 @@ function ForgotPassword({ onBackToLogin }) {
         </div>
       </div>
 
-      {/* Form Side - Solid Black Background for Bento Contrast */}
+      {/* Form Side */}
       <div className="auth-form-side" style={{ flex: 1, backgroundColor: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
         
-        {/* THE SOLID BENTO CARD */}
         <div style={{ 
           width: '100%', maxWidth: '460px', padding: '45px', 
           backgroundColor: '#121212', 
@@ -121,7 +118,6 @@ function ForgotPassword({ onBackToLogin }) {
               <h1 style={{ fontSize: '32px', fontWeight: '900', margin: 0 }}>Account Recovery</h1>
             </div>
             
-            {/* Step Progress Bar */}
             <div style={{ display: 'flex', gap: '8px' }}>
                <div style={{ height: '4px', flex: 1, background: '#10b981', borderRadius: '4px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)' }}></div>
                <div style={{ height: '4px', flex: 1, background: step === 2 ? '#10b981' : '#222', borderRadius: '4px', transition: 'all 0.4s ease', boxShadow: step === 2 ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none' }}></div>
@@ -129,7 +125,6 @@ function ForgotPassword({ onBackToLogin }) {
           </div>
 
           {step === 1 ? (
-            // ================= STEP 1: REQUEST CODE =================
             <div style={{ animation: 'ultraFade 0.4s ease' }}>
               <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', marginBottom: '25px', fontWeight: '500' }}>
                 Enter the email address associated with your account, and we will send you a secure 6-digit recovery code.
@@ -153,7 +148,6 @@ function ForgotPassword({ onBackToLogin }) {
               </form>
             </div>
           ) : (
-            // ================= STEP 2: VERIFY & RESET =================
             <div style={{ animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
               <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', marginBottom: '25px', fontWeight: '500' }}>
                 We've sent a 6-digit code to <strong style={{color: '#fff'}}>{email}</strong>. Enter it below along with your new password.
@@ -161,7 +155,6 @@ function ForgotPassword({ onBackToLogin }) {
 
               <form onSubmit={handleResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 
-                {/* --- UPDATED TOKEN INPUT WITH INLINE ERROR --- */}
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>6-Digit Recovery Code</label>
                   <input 
@@ -169,11 +162,11 @@ function ForgotPassword({ onBackToLogin }) {
                     value={token} 
                     onChange={(e) => {
                       setToken(e.target.value.toUpperCase());
-                      if (tokenError) setTokenError(''); // Clear error when user starts typing
+                      if (tokenError) setTokenError(''); 
                     }} 
                     style={{ 
                       width: '100%', padding: '16px 20px', background: '#0a0a0a', 
-                      border: tokenError ? '1px solid #ef4444' : '1px solid #333', // Turns red on error
+                      border: tokenError ? '1px solid #ef4444' : '1px solid #333', 
                       borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '16px', 
                       letterSpacing: '4px', textAlign: 'center', fontWeight: '900', transition: '0.3s ease' 
                     }} 
@@ -181,7 +174,6 @@ function ForgotPassword({ onBackToLogin }) {
                     onBlur={(e) => e.target.style.borderColor = tokenError ? '#ef4444' : '#333'}
                   />
                   
-                  {/* Inline Error Render */}
                   {tokenError && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontSize: '13px', marginTop: '10px', fontWeight: '600', animation: 'ultraFade 0.3s ease' }}>
                       <AlertCircle size={16} />

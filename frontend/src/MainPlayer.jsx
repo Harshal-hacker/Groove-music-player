@@ -1,31 +1,42 @@
 import { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, X, VolumeX, Shuffle, PlusCircle, ListMusic, Repeat, Home, Search, Settings, Heart, Loader2, Plus, Folder, User, ShieldCheck, ArrowLeft, LogOut, FolderPlus, Share2, Link, ChevronRight, Trash2 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom'; // <-- NEW: React Router Hook
+import { Play, Pause, SkipForward, SkipBack, Volume2, X, VolumeX, Shuffle, PlusCircle, ListMusic, Repeat, Home, Search, Settings as SettingsIcon, Heart, Loader2, Plus, Folder, User, ShieldCheck, ArrowLeft, LogOut, FolderPlus, Share2, Link, ChevronRight, Trash2 } from 'lucide-react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import './App.css';
 import Admin from './Admin';
 import PlayerDeck from './components/PlayerDeck';
 import { usePlayer } from './context/PlayerContext';
 import Sidebar from './components/Sidebar';
 import MainFeed from './components/MainFeed';
+import Profile from './components/Profile';
+import Settings from './components/Settings';
 import { API_BASE_URL } from './config';
 
 function MainPlayer() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
 
   // 1. GLOBAL STATE (Coming from PlayerContext)
-  // I added setPlaylist here because your API fetch needs it!
   const { 
+    currentUser, setCurrentUser, // <-- AUTH STATE ADDED
+    isAuthLoading,
     playlist, setPlaylist, 
     currentTrack, currentTrackIndex, setCurrentTrackIndex,
     isPlaying, setIsPlaying,
     setCurrentTime,          
     queue, setQueue, 
     playbackContext, setPlaybackContext,
-    audioRef 
+    activePlaylistName,
+    audioRef,
+    selectedPlaylist, setSelectedPlaylist,
+    syncPlayback
   } = usePlayer();
 
-  // 2. LOCAL UI STATE (Keep these, they only apply to the visual screen)
+  // DERIVE AUTH STATUS FROM GLOBAL CONTEXT
+  const isAuthenticated = !!currentUser;
+  const isAdmin = currentUser?.role === 'admin';
+
+  // 2. LOCAL UI STATE
   const [searchQuery, setSearchQuery] = useState(''); 
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -34,22 +45,21 @@ function MainPlayer() {
   const [error, setError] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false); 
   
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('userId'));
   const [contextMenu, setContextMenu] = useState(null); 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   const avatarRef = useRef(null);
   const curatedShelfRef = useRef(null);
-  const [isAdmin, setIsAdmin] = useState(localStorage.getItem('role') === 'admin'); 
 
-  const [userData, setUserData] = useState({ likedSongs: [], role: localStorage.getItem('role') || 'user' });
-  const isPlayingFromQueueRef = useRef(false); 
-  const [activePlaylistName, setActivePlaylistName] = useState("All Songs"); 
+  const [userData, setUserData] = useState({ likedSongs: [], role: 'user' });
+  const isPlayingFromQueueRef = useRef(false);  
   const lastContextIndexRef = useRef(0);
-  const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [userPlaylists, setUserPlaylists] = useState([]);
   const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
+  
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
+  
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -65,7 +75,7 @@ function MainPlayer() {
 
   // --- Data Fetching Effect ---
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/songs`)
+    fetch(`${API_BASE_URL}/api/songs`, { credentials: 'include' }) // <-- ADDED
       .then(response => response.json())
       .then(data => {
         setPlaylist(data);
@@ -75,7 +85,7 @@ function MainPlayer() {
         console.error("Fetch error:", err);
         setIsLoading(false);
       });
-  }, [showAdmin]); // Removed 'view' dependency
+  }, [showAdmin]); 
 
   useEffect(() => {
     if (id) {
@@ -89,13 +99,13 @@ function MainPlayer() {
 
   useEffect(() => {
     const fetchUserLibrary = async () => {
-      const userId = localStorage.getItem('userId');
+      const userId = currentUser?._id;
       const url = userId 
         ? `${API_BASE_URL}/api/playlists?userId=${userId}`
         : `${API_BASE_URL}/api/playlists`;
         
       try {
-        const response = await fetch(url);
+        const response = await fetch(url, { credentials: 'include' }); // <-- ADDED
         const data = await response.json();
         if (Array.isArray(data)) {
           setUserPlaylists(data);
@@ -105,40 +115,36 @@ function MainPlayer() {
       }
     };
     fetchUserLibrary();
-  }, [showAdmin, isAuthenticated]); // Removed 'view' dependency
+  }, [showAdmin, isAuthenticated, currentUser]); 
 
+  {/*// In MainPlayer.jsx
   useEffect(() => {
-    const userId = localStorage.getItem('userId');
+    // Wait until auth is done loading AND playlist is ready
+    if (isAuthLoading || playlist.length === 0) return;
+
+    const userId = currentUser?._id;
     
     if (isAuthenticated && userId) {
-      fetch(`${API_BASE_URL}/api/users/${userId}`)
-        .then(res => res.ok ? res.json() : Promise.reject('User not found'))
+      fetch(`${API_BASE_URL}/api/users/${userId}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null)
         .then(data => {
-          setUserData({
-            likedSongs: data.likedSongs || [],
-            role: data.role || 'user'
-          });
-
-          if (data.lastPlayback?.songId && playlist.length > 0 && !initialTimeSet) {
+          // Only restore if we haven't already restored and we have session data
+          if (data?.lastPlayback?.songId && !initialTimeSet) {
             const savedIndex = playlist.findIndex(s => s._id === data.lastPlayback.songId);
             if (savedIndex !== -1) {
-              setCurrentTrackIndex(savedIndex); 
-              setSavedTime(data.lastPlayback.currentTime || 0); 
-              setInitialTimeSet(true); 
+              setCurrentTrackIndex(savedIndex);
+              setInitialTimeSet(true);
               
-              if (audioRef.current && audioRef.current.readyState >= 1) {
+              // Sync audio element
+              if (audioRef.current) {
                 audioRef.current.currentTime = data.lastPlayback.currentTime || 0;
                 setCurrentTime(data.lastPlayback.currentTime || 0);
               }
             }
           }
-        })
-        .catch(err => {
-          console.error("Sync failed:", err);
-          setUserData({ likedSongs: [], role: 'user' });
         });
     }
-  }, [isAuthenticated, playlist.length]); 
+  }, [isAuthenticated, isAuthLoading, playlist.length]); // Added isAuthLoading*/}
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -149,15 +155,6 @@ function MainPlayer() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showUserMenu]);
-
-  useEffect(() => {
-    const user = localStorage.getItem('userId');
-    const role = localStorage.getItem('role'); 
-    if (user) {
-      setIsAuthenticated(true);
-      if (role === 'admin') setIsAdmin(true);
-    }
-  }, []);
 
   // --- Playback Engine Effect ---
   useEffect(() => {
@@ -218,7 +215,10 @@ function MainPlayer() {
       message: "Are you sure you want to remove this playlist? This action cannot be undone.",
       onConfirm: async () => {
         try {
-          const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, { method: 'DELETE' });
+          const response = await fetch(`${API_BASE_URL}/api/playlists/${id}`, { 
+            method: 'DELETE',
+            credentials: 'include' // <-- ADDED
+          });
           if (response.ok) {
             setUserPlaylists(prev => prev.filter(pl => pl._id !== id));
             if (selectedPlaylist === id) {
@@ -249,7 +249,8 @@ function MainPlayer() {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${id}/rename`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName })
+        body: JSON.stringify({ name: newName }),
+        credentials: 'include' // <-- ADDED
       });
       if (response.ok) {
         const updatedPlaylist = await response.json();
@@ -314,7 +315,7 @@ function MainPlayer() {
   }, []);
 
   useEffect(() => {
-    const userId = localStorage.getItem('userId');
+    const userId = currentUser?._id;
     if (!userId || !currentTrack || !audioRef.current) return;
 
     const syncStateToCloud = () => {
@@ -325,7 +326,8 @@ function MainPlayer() {
           body: JSON.stringify({
             songId: currentTrack._id,
             currentTime: audioRef.current.currentTime
-          })
+          }),
+          credentials: 'include' // <-- ADDED
         }).catch(e => console.error("Cloud sync failed", e));
       }
     };
@@ -342,7 +344,7 @@ function MainPlayer() {
       window.removeEventListener('beforeunload', syncStateToCloud);
       if (heartbeatInterval) clearInterval(heartbeatInterval); 
     };
-  }, [isPlaying, currentTrack]);
+  }, [isPlaying, currentTrack, currentUser]);
 
   useEffect(() => {
     if (isPlayingFromQueueRef.current) return; 
@@ -438,9 +440,6 @@ function MainPlayer() {
     }
   };
 
-  const handleSongEnd = () => handleNext();
-  const handleTimeUpdate = () => setCurrentTime(audioRef.current.currentTime);
-
   const handleLoadedMetadata = async () => {
     if (!audioRef.current) return;
     const seconds = audioRef.current.duration;
@@ -457,7 +456,8 @@ function MainPlayer() {
         const response = await fetch(`${API_BASE_URL}/api/songs/${currentTrack._id}/duration`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ duration: seconds })
+          body: JSON.stringify({ duration: seconds }),
+          credentials: 'include' // <-- ADDED
         });
 
         if (response.ok) {
@@ -470,20 +470,20 @@ function MainPlayer() {
   };
 
   const getUserInitial = () => {
-    const userEmail = localStorage.getItem('userEmail'); 
-    if (userEmail) return userEmail.charAt(0).toUpperCase();
+    if (currentUser?.email) return currentUser.email.charAt(0).toUpperCase();
     return "?"; 
   };
 
   const handleCreatePlaylistInline = async () => {
-    const userId = localStorage.getItem('userId');
+    const userId = currentUser?._id;
     if (!userId) return;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: "New Playlist", createdBy: userId, songIds: [] })
+        body: JSON.stringify({ name: "New Playlist", createdBy: userId, songIds: [] }),
+        credentials: 'include' // <-- ADDED
       });
 
       if (response.ok) {
@@ -504,9 +504,12 @@ function MainPlayer() {
       title: "Delete Track Permanently",
       message: "Are you sure you want to permanently delete this track from the cloud database?",
       onConfirm: async () => {
-        const userId = localStorage.getItem('userId');
+        const userId = currentUser?._id;
         try {
-          const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, { method: 'DELETE' });
+          const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, { 
+            method: 'DELETE',
+            credentials: 'include' // <-- ADDED
+          });
           if (res.ok) {
             setPlaylist(prev => prev.filter(s => s._id !== id));
             if (currentTrack?._id === id) {
@@ -527,7 +530,7 @@ function MainPlayer() {
     });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = ""; 
@@ -536,29 +539,38 @@ function MainPlayer() {
     setCurrentTrackIndex(0);
     setCurrentTime(0);
 
-    localStorage.removeItem('userId');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('role'); 
+    try {
+      // Hit the backend to destroy the secure cookie
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+
+    // Clear react state
+    setCurrentUser(null);
+    localStorage.clear(); 
     
-    setIsAuthenticated(false);
-    setIsAdmin(false); 
     setShowUserMenu(false);
     setShowAdmin(false); 
     setSelectedPlaylist(null);
     
-    navigate('/'); // Optionally ensure we are on home route
+    navigate('/'); 
   };
 
   const toggleLike = async (songId, e) => {
     if (e) e.stopPropagation();
-    const userId = localStorage.getItem('userId');
+    const userId = currentUser?._id;
     if (!userId) return alert("Please log in!");
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/users/toggle-like`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, songId })
+        body: JSON.stringify({ userId, songId }),
+        credentials: 'include' // <-- ADDED
       });
       if (response.ok) {
         const data = await response.json();
@@ -578,7 +590,8 @@ function MainPlayer() {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/rename`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tempName })
+        body: JSON.stringify({ name: tempName }),
+        credentials: 'include' // <-- ADDED
       });
       if (response.ok) {
         const updatedPlaylist = await response.json();
@@ -591,7 +604,7 @@ function MainPlayer() {
   const handleContextMenu = (e, id, type = 'song', source = 'general') => {
     e.preventDefault();
     const menuWidth = 220;
-    const menuHeight = (type === 'song' && localStorage.getItem('role') === 'admin') ? 380 : 320; 
+    const menuHeight = (type === 'song' && isAdmin) ? 380 : 320; 
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     let x = e.clientX;
@@ -612,13 +625,14 @@ function MainPlayer() {
     setContextMenu(null);
     const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
     const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
-    const userId = localStorage.getItem('userId');
+    const userId = currentUser?._id;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId }) 
+        body: JSON.stringify({ songId, userId }),
+        credentials: 'include' // <-- ADDED
       });
 
       if (response.ok) {
@@ -641,7 +655,8 @@ function MainPlayer() {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId })
+        body: JSON.stringify({ songId }),
+        credentials: 'include' // <-- ADDED
       });
       if (response.ok) {
         const updatedPlaylist = await response.json();
@@ -671,7 +686,7 @@ function MainPlayer() {
 
   useEffect(() => { window.scrollTo(0, 0); }, [showLikedOnly]);
 
-  if (isLoading) {
+  if (isLoading || isAuthLoading) {
     return (
       <div className="spotify-container loading-screen" style={{ backgroundColor: '#000' }}>
         <Loader2 size={48} className="spinner" color="#10b981" />
@@ -690,7 +705,6 @@ function MainPlayer() {
   }
 
   // --- Admin Panel Conditional Render ---
-  // NOTE: In Phase 3, this will be moved to its own route!
   if (showAdmin) {
     return (
       <Admin 
@@ -756,7 +770,7 @@ function MainPlayer() {
           onClick={() => { 
             setShowLikedOnly(false); 
             setActiveCategory('All'); 
-            navigate('/'); // <--- This changes the URL to home!
+            navigate('/'); 
           }} 
           style={{ 
             width: '48px', height: '48px', borderRadius: '50%', 
@@ -795,7 +809,6 @@ function MainPlayer() {
         <div style={{ flex: '0 0 auto', display: 'flex', gap: '15px', alignItems: 'center' }}>
           {!isAuthenticated ? (
             <>
-              {/* --- REACT ROUTER NAVIGATION APPLIED HERE --- */}
               <button onClick={() => navigate('/signup')} style={{ background: 'none', border: 'none', color: '#64748b', fontWeight: 'bold', cursor: 'pointer' }}>Sign Up</button>
               <button onClick={() => navigate('/login')} style={{ backgroundColor: 'white', color: 'black', padding: '10px 25px', borderRadius: '50px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>Log In</button>
             </>
@@ -840,30 +853,42 @@ function MainPlayer() {
                       {getUserInitial()}
                     </div>
                     <h3 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '800' }}>
-                      {localStorage.getItem('userEmail')?.split('@')[0]}
+                      {currentUser?.email?.split('@')[0]}
                     </h3>
                   </div>
 
+                  {/* 4 Action Circles */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', gap: '10px' }}>
-                    <div className="ultra-action-circle" title="Profile"><User size={18} /></div>
-                    <div className="ultra-action-circle" title="Settings"><Settings size={18} /></div>
-                    <div className="ultra-action-circle" title="Account"><User size={18} /></div>
-                    <div className="ultra-action-circle" title="Privacy"><ShieldCheck size={18} /></div>  
+                    <div className="ultra-action-circle" title="Profile" onClick={() => { setShowUserMenu(false); navigate('/profile'); }} style={{ cursor: 'pointer' }}>
+                      <User size={18} />
+                    </div>
+                    <div className="ultra-action-circle" title="Settings" onClick={() => { setShowUserMenu(false); navigate('/settings'); }} style={{ cursor: 'pointer' }}>
+                      <SettingsIcon size={18} />
+                    </div>
+                    <div className="ultra-action-circle" title="Account" onClick={() => { setShowUserMenu(false); navigate('/account'); }} style={{ cursor: 'pointer' }}>
+                      <User size={18} />
+                    </div>
+                    <div className="ultra-action-circle" title="Privacy" onClick={() => { setShowUserMenu(false); setToast({ message: "Privacy settings locked.", type: "error" }); setTimeout(() => setToast(null), 3000); }} style={{ cursor: 'pointer' }}>
+                      <ShieldCheck size={18} />
+                    </div>  
                   </div>
 
+                  {/* List Items */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div className="ultra-menu-item">
+                    <div className="ultra-menu-item" onClick={() => { setShowUserMenu(false); navigate('/profile'); }} style={{ cursor: 'pointer' }}>
                       <span>View Public Profile</span>
                       <ArrowLeft style={{ transform: 'rotate(180deg)', opacity: 0.3 }} size={14} />
                     </div>
-                    <div className="ultra-menu-item">
+                    <div className="ultra-menu-item" onClick={() => { setShowUserMenu(false); navigate('/settings'); }} style={{ cursor: 'pointer' }}>
                       <span>Privacy Settings</span>
+                      <ArrowLeft style={{ transform: 'rotate(180deg)', opacity: 0.3 }} size={14} />
                     </div>
                   </div>
 
                   <div style={{ height: '1px', background: '#333', margin: '15px 0' }} />
 
-                  <button onClick={handleLogout} className="ultra-logout-btn">
+                  {/* Logout Button */}
+                  <button onClick={handleLogout} className="ultra-logout-btn" style={{ cursor: 'pointer' }}>
                     <LogOut size={16} />
                     <span>LOGOUT</span>
                   </button>
@@ -892,19 +917,33 @@ function MainPlayer() {
           handleContextMenu={handleContextMenu}
         />
 
-        <MainFeed 
-          activeCategory={activeCategory}
-          selectedPlaylist={selectedPlaylist}
-          setSelectedPlaylist={setSelectedPlaylist}
-          debouncedQuery={debouncedQuery}
-          userPlaylists={userPlaylists}
-          setUserPlaylists={setUserPlaylists}
-          filteredPlaylist={filteredPlaylist}
-          readyMadePlaylists={readyMadePlaylists}
-          handleContextMenu={handleContextMenu}
-          isAdmin={isAdmin}
-          setToast={setToast}
-        />
+        {/* ROUTING LOGIC FOR THE MAIN CONTENT AREA */}
+        {location.pathname === '/profile' ? (
+          <Profile 
+            userData={userData}
+            userPlaylists={userPlaylists}
+            playlist={playlist}
+            setCurrentTrackIndex={setCurrentTrackIndex}
+            setIsPlaying={setIsPlaying}
+            setPlaybackContext={setPlaybackContext}
+          />
+        ) : location.pathname === '/settings' ? (
+          <Settings handleLogout={handleLogout} />
+        ) : (
+          <MainFeed 
+            activeCategory={activeCategory}
+            selectedPlaylist={selectedPlaylist}
+            setSelectedPlaylist={setSelectedPlaylist}
+            debouncedQuery={debouncedQuery}
+            userPlaylists={userPlaylists}
+            setUserPlaylists={setUserPlaylists}
+            filteredPlaylist={filteredPlaylist}
+            readyMadePlaylists={readyMadePlaylists}
+            handleContextMenu={handleContextMenu}
+            isAdmin={isAdmin}
+            setToast={setToast}
+          />
+        )}
         
         {/* --- RIGHT QUEUE --- */}
         <aside style={{
@@ -966,7 +1005,9 @@ function MainPlayer() {
               if (remainingSongs.length > 0) {
                 return (
                   <div>
-                    <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#fff', fontWeight: '800' }}>Next from: {activePlaylistName}</h4>
+                    <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#fff', fontWeight: '800' }}>
+                      {activePlaylistName !== "All Songs" ? `Next from: ${activePlaylistName}` : "Up Next"}
+                    </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {remainingSongs.map((song, index) => (
                         <div key={`auto-${song._id}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: 0.6 }}>
@@ -1022,13 +1063,18 @@ function MainPlayer() {
                 {targetPl.isReadyMade ? (
                   <>
                     {(() => {
-                      const isFollowed = targetPl.followers?.includes(localStorage.getItem('userId'));
+                      const isFollowed = targetPl.followers?.includes(currentUser?._id);
                       return (
                         <div className="context-item" onClick={async () => {
                           setContextMenu(null);
-                          const userId = localStorage.getItem('userId');
+                          const userId = currentUser?._id;
                           try {
-                            const res = await fetch(`${API_BASE_URL}/api/playlists/${contextMenu.id}/follow`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+                            const res = await fetch(`${API_BASE_URL}/api/playlists/${contextMenu.id}/follow`, { 
+                              method: 'PATCH', 
+                              headers: { 'Content-Type': 'application/json' }, 
+                              body: JSON.stringify({ userId }),
+                              credentials: 'include' // <-- ADDED
+                            });
                             if (res.ok) {
                               const updatedPlaylist = await res.json();
                               setUserPlaylists(prev => prev.map(p => p._id === contextMenu.id ? updatedPlaylist : p));
@@ -1086,7 +1132,7 @@ function MainPlayer() {
                         <div 
                           className="context-item" style={{ color: '#10b981' }}
                           onClick={async () => {
-                            const userId = localStorage.getItem('userId');
+                            const userId = currentUser?._id;
                             const name = prompt("Enter a name for this Playlist:");
                             if (!name) return;
                             const category = prompt("Enter Category Group (e.g., Trending Now, Top Charts, New Releases, Editorial Picks):", "Trending Now");
@@ -1094,7 +1140,12 @@ function MainPlayer() {
                             if (!category) return;
 
                             try {
-                              const res = await fetch(`${API_BASE_URL}/api/playlists/curated`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, userId, category: category.trim() }) });
+                              const res = await fetch(`${API_BASE_URL}/api/playlists/curated`, { 
+                                method: 'POST', 
+                                headers: { 'Content-Type': 'application/json' }, 
+                                body: JSON.stringify({ name, userId, category: category.trim() }),
+                                credentials: 'include' // <-- ADDED
+                              });
                               if (res.ok) {
                                 const newCuratedDeck = await res.json();
                                 setUserPlaylists(prev => [...prev, newCuratedDeck]);
@@ -1126,7 +1177,7 @@ function MainPlayer() {
                     </div>
 
                     <div className="context-item" onClick={() => { setTempName(targetPl.name || ""); setSelectedPlaylist(contextMenu.id); setIsEditingName(true); setContextMenu(null); }}>
-                      <div className="item-content"><Settings size={16} /> <span>Edit details</span></div>
+                      <div className="item-content"><SettingsIcon size={16} /> <span>Edit details</span></div>
                     </div>
 
                     <div className="context-item delete-text" onClick={() => { deletePlaylist(contextMenu.id); setContextMenu(null); }}>
@@ -1334,13 +1385,15 @@ function MainPlayer() {
                 filteredPlaylist.slice(0, 8).map((track) => (
                   <div 
                     key={track._id}
-                    onClick={() => {
-                      setPlaybackContext(filteredPlaylist);
-                      setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id));
-                      setIsPlaying(true);
+                    onClick={() => { 
+                      setPlaybackContext(filteredPlaylist); 
+                      setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
+                      setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
+                      setIsPlaying(true); 
                       isPlayingFromQueueRef.current = false;
-                      setActivePlaylistName(debouncedQuery.trim() !== '' ? "Search Results" : "All Songs");
-                      setIsSearchOpen(false); 
+                      
+                      // ADD THIS LINE SO PLAYLIST CLICKS SYNC IMMEDIATELY:
+                      syncPlayback(track._id, 0, selectedPlaylist);
                     }}
                     style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '10px 15px', borderRadius: '12px', cursor: 'pointer', transition: '0.2s', backgroundColor: 'transparent' }}
                     onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#1a1a1a'; e.currentTarget.style.transform = 'translateX(4px)'; }}
