@@ -30,7 +30,7 @@ function MainPlayer() {
     audioRef,
     selectedPlaylist, setSelectedPlaylist,
     syncPlayback,setActivePlaylistName,
-    forceSyncNow
+    forceSyncNow,setPlayingPlaylistId
   } = usePlayer();
 
   // DERIVE AUTH STATUS FROM GLOBAL CONTEXT
@@ -211,25 +211,25 @@ function MainPlayer() {
   }, [contextMenu]);
 
   // ==========================================
-  // SERVER QUEUE RESTORER
+  // PROFESSIONAL QUEUE RESTORER
   // ==========================================
   useEffect(() => {
-    // Wait until the backend data (playlists and user session) is fully loaded
+    // Wait until the database playlists are fully loaded
     if (!hasRestoredServerQueue.current && userPlaylists.length > 0 && currentUser?.activeSession?.playlistId) {
       
-      // Find the exact playlist the database remembers you were listening to
       const serverPlaylist = userPlaylists.find(p => p._id === currentUser.activeSession.playlistId);
       
       if (serverPlaylist) {
-        // Silently restore the exact name and tracks into the queue background!
-        setActivePlaylistName(serverPlaylist.name);
+        // Force the app to remember the exact name of the playlist from the cloud
+        setActivePlaylistName(serverPlaylist.name); 
         setPlaybackContext(serverPlaylist.songIds || []);
+        setPlayingPlaylistId(serverPlaylist._id);
       }
       
-      hasRestoredServerQueue.current = true; // Only run this once per refresh
+      hasRestoredServerQueue.current = true; 
     }
-  }, [userPlaylists, currentUser, setActivePlaylistName, setPlaybackContext]);
-
+  }, [userPlaylists, currentUser, setActivePlaylistName, setPlaybackContext, setPlayingPlaylistId]);
+  
   useEffect(() => {
     if (contextMenu) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'auto';

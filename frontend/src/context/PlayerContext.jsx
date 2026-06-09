@@ -43,6 +43,8 @@ export const PlayerProvider = ({ children }) => {
   const [queue, setQueue] = useState(() => loadSetting('groove_queue', []));
   const [playbackContext, setPlaybackContext] = useState(() => loadSetting('groove_playbackContext', []));
   const [activePlaylistName, setActivePlaylistName] = useState(() => loadSetting('groove_activePlaylistName', "All Songs"));
+  const [playingPlaylistId, setPlayingPlaylistId] = useState(() => loadSetting('groove_playingPlaylistId', null));
+  useEffect(() => localStorage.setItem('groove_playingPlaylistId', JSON.stringify(playingPlaylistId)), [playingPlaylistId]);
 
   // SETTINGS STATES
   const [highQuality, setHighQuality] = useState(() => loadSetting('groove_highQuality', true));
@@ -98,7 +100,7 @@ export const PlayerProvider = ({ children }) => {
 
   const forceSyncNow = () => {
     if (audioRef.current && currentTrack) {
-      syncPlayback(currentTrack._id, audioRef.current.currentTime || 0, selectedPlaylist);
+      syncPlayback(currentTrack._id, audioRef.current.currentTime || 0, playingPlaylistId);
     }
   };
 
@@ -141,26 +143,28 @@ export const PlayerProvider = ({ children }) => {
   // RESTORER: Load from Server
   // ==========================================
   useEffect(() => {
+    // 1. If the user logs out, reset the flag so it is ready for the next login!
+    if (!currentUser) {
+      setHasRestoredSession(false);
+      return;
+    }
+
+    // 2. If a user is logged in and we haven't restored yet, do it!
     if (playlist.length > 0 && currentUser && !hasRestoredSession) {
       const savedTrackId = currentUser.activeSession?.trackId?._id || currentUser.activeSession?.trackId;
-      // const savedPlaylistId = currentUser.activeSession?.playlistId; // You don't need this anymore
       const savedTime = currentUser.activeSession?.currentTime;
 
       if (savedTrackId) {
         const savedIndex = playlist.findIndex(s => s._id === savedTrackId);
         if (savedIndex !== -1) {
           setCurrentTrackIndex(savedIndex);
-          
-          // REMOVED: setSelectedPlaylist(savedPlaylistId);
-          // Now the audio will load quietly in the bottom bar, 
-          // but the main screen will stay on the Home Dashboard!
 
           if (savedTime > 0) {
             pendingRestoreTime.current = parseFloat(savedTime);
           }
         }
       }
-      setHasRestoredSession(true);
+      setHasRestoredSession(true); // Mark as done for this session
     }
   }, [playlist, currentUser, hasRestoredSession]);
 
@@ -281,8 +285,8 @@ export const PlayerProvider = ({ children }) => {
       privateProfile, setPrivateProfile,
       explicitContent, setExplicitContent,
       selectedPlaylist, setSelectedPlaylist,
-      syncPlayback,
-      forceSyncNow
+      syncPlayback,forceSyncNow,
+      playingPlaylistId, setPlayingPlaylistId
     }}>
       {!isAuthLoading && children}
       {currentTrack && (

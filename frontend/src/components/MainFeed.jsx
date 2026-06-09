@@ -21,8 +21,8 @@ export default function MainFeed({
     playlist, currentTrack, currentTrackIndex, setCurrentTrackIndex, 
     isPlaying, setIsPlaying, setPlaybackContext, isPlayingFromQueueRef,
     setActivePlaylistName, queue, setQueue,
-    currentUser, // <-- Added currentUser to pull from Context securely
-    togglePlayPause
+    currentUser, togglePlayPause,
+    setPlayingPlaylistId
   } = usePlayer();
   const navigate = useNavigate();
 
@@ -41,6 +41,26 @@ export default function MainFeed({
       return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     }
     return '0:00';
+  };
+
+  // ==========================================
+  // PROFESSIONAL CONTEXT ENGINE
+  // ==========================================
+  const getContextName = () => {
+    // 1. Are they playing from a search?
+    if (debouncedQuery && debouncedQuery.trim() !== '') return "Search Results";
+    
+    // 2. Are they playing their liked songs?
+    if (activeCategory === 'Liked') return "Liked Songs";
+    
+    // 3. Are they inside a specific playlist?
+    if (selectedPlaylist) {
+      const pl = userPlaylists.find(p => p._id === selectedPlaylist);
+      return pl ? pl.name : "Playlist";
+    }
+    
+    // 4. Default fallback
+    return "All Songs";
   };
 
   const handleInlineRename = async () => {
@@ -304,7 +324,10 @@ export default function MainFeed({
                         // 3. If it is a DIFFERENT playlist, load it up and start from Track 1
                         if (filteredPlaylist.length > 0) {
                           setPlaybackContext(filteredPlaylist); 
-                          setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
+                          
+                          // ---> USE THE NEW ENGINE HERE <---
+                          setActivePlaylistName(getContextName());
+                          setPlayingPlaylistId(selectedPlaylist); 
                           
                           setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
                           setIsPlaying(true);
@@ -378,13 +401,14 @@ export default function MainFeed({
                   key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
                   onClick={() => { 
                     setPlaybackContext(filteredPlaylist); 
+        
+                    // ---> USE THE NEW ENGINE HERE <---
+                    setActivePlaylistName(getContextName());
+                    setPlayingPlaylistId(selectedPlaylist); 
                     
-                    // UNCOMMENT THIS HERE TOO:
-                    setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "All Songs");
-                    
-                    setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
-                    setIsPlaying(true); 
-                    if(isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
+                    setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
+                    setIsPlaying(true);
+                    if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
                   }}
                   onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                 >

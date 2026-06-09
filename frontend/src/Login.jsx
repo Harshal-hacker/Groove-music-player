@@ -15,27 +15,33 @@ function Login() {
     setIsSubmitting(true);
     
     try {
+      // 1. Perform the normal login check
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Use the formData object directly
         body: JSON.stringify(formData), 
-        credentials: 'include' // <-- SECURED: Accepts the HTTP-only cookie
+        credentials: 'include' // Accepts the HTTP-only cookie
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        // 1. NO MORE LOCAL STORAGE! 
-        
-        // 2. Set the global user state via Context
-        setCurrentUser({ 
-          _id: data.userId, 
-          email: formData.email, 
-          role: data.role 
+        // 2. THE FIX: The password worked! Now instantly fetch the full profile data.
+        const profileResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          credentials: 'include'
         });
+
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          
+          // Set the FULL user object (which includes activeSession!)
+          setCurrentUser(profileData.user);
+        } else {
+          // Fallback just in case the profile fetch fails
+          setCurrentUser({ _id: data.userId, email: formData.email, role: data.role });
+        }
         
-        // 3. Send to player on success
+        // 3. Send to player
         navigate('/'); 
       } else {
         alert(data.message || "Invalid Email or Password");
@@ -47,7 +53,7 @@ function Login() {
       setIsSubmitting(false);
     }
   };
-
+  
   return (
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
       
