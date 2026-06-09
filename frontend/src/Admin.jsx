@@ -156,7 +156,7 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     }
   };
 
-  const handleBulkFolderUpload = async (event) => {
+  const handleFolderUpload = async (event) => {
     const files = Array.from(event.target.files);
     const audioFiles = files.filter(file => file.type.startsWith('audio/') || file.name.endsWith('.mp3'));
     
@@ -173,6 +173,7 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     setIsUploading(true);
     setUploadStats({ current: 1, total: audioFiles.length });
     const fileProgressTracker = new Array(audioFiles.length).fill(0);
+    const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0); // Calculate total size once
     
     const extractMetadata = (file) => {
       return new Promise((resolve) => {
@@ -195,38 +196,61 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
     };
 
     try {
-      const uploadPromises = audioFiles.map(async (file, index) => {
-        const metadata = await extractMetadata(file);
-        const formData = new FormData();
-        formData.append('audio', file);
-        formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
-        formData.append('title', metadata.title);
-        formData.append('artist', metadata.artist);
-        if (metadata.coverFile) formData.append('cover', metadata.coverFile);
+      const uploadedTracks = []; // Array to collect successful uploads
 
-        const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0);
+      // ========================================================
+      // 🚀 THE FIX: SEQUENTIAL UPLOAD LOOP (NO MORE PROMISE.ALL)
+      // ========================================================
+      for (let index = 0; index < audioFiles.length; index++) {
+        const file = audioFiles[index];
+        
+        try {
+          const metadata = await extractMetadata(file);
+          const formData = new FormData();
+          formData.append('audio', file);
+          formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
+          formData.append('title', metadata.title);
+          formData.append('artist', metadata.artist);
+          if (metadata.coverFile) formData.append('cover', metadata.coverFile);
 
-        return axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
-          withCredentials: true, // <-- AXIOS SECURE COOKIE ATTACHMENT
-          onUploadProgress: (progressEvent) => {
-            fileProgressTracker[index] = progressEvent.loaded;
-            const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
-            const globalPercentage = Math.min(Math.round((totalLoadedBytes / totalBytesAllFiles) * 100), 100);
-            setOverallProgress(globalPercentage);
-            setUploadProgress(globalPercentage);
+          // We await THIS specific upload before moving to the next loop iteration
+          const res = await axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
+            withCredentials: true, // <-- AXIOS SECURE COOKIE ATTACHMENT
+            onUploadProgress: (progressEvent) => {
+              fileProgressTracker[index] = progressEvent.loaded;
+              const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
+              const globalPercentage = Math.min(Math.round((totalLoadedBytes / totalBytesAllFiles) * 100), 100);
+              setOverallProgress(globalPercentage);
+              setUploadProgress(globalPercentage);
+            }
+          });
+
+          uploadedTracks.push(res.data); // Save the track if successful
+          
+          // Only update the "current" file count text if we aren't on the very last file
+          if (index < audioFiles.length - 1) {
+            setUploadStats(prev => ({ ...prev, current: prev.current + 1 }));
           }
-        }).then((res) => {
-          setUploadStats(prev => ({ ...prev, current: Math.min(prev.current + 1, audioFiles.length) }));
-          return res.data; 
-        });
-      });
 
-      const uploadedTracks = await Promise.all(uploadPromises);
+        } catch (fileErr) {
+          console.error(`Failed to upload ${file.name}:`, fileErr);
+          // By putting this try/catch INSIDE the loop, if one song fails, 
+          // it won't crash the entire folder upload. It just moves to the next song!
+        }
+      }
+      // ========================================================
+
+      // Check if anything actually uploaded successfully
+      if (uploadedTracks.length === 0) {
+        throw new Error("All track uploads failed.");
+      }
       
+      // Update global React State
       if (typeof setPlaylist === 'function') {
         setPlaylist(prev => [...uploadedTracks, ...prev]);
       }
 
+      // Automatically group them into a folder
       const newlyCreatedSongIds = uploadedTracks.map(track => track._id);
       
       const curationResponse = await fetch(`${API_BASE_URL}/api/playlists/bulk-curate`, {
@@ -473,7 +497,7 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
                 directory="true" 
                 multiple 
                 style={{ display: 'none' }} 
-                onChange={handleBulkFolderUpload} 
+                onChange={handleFolderUpload} 
               />
             </div>
           </div>
