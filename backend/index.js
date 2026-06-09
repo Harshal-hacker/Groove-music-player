@@ -81,8 +81,10 @@ const sendAuthCookie = (res, user) => {
 
   res.cookie('auth_token', token, {
     httpOnly: true,  // JavaScript cannot access this cookie (Stops XSS)
-    secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
-    sameSite: 'strict', // Stops CSRF attacks
+    // secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
+    // sameSite: 'strict', // Stops CSRF attacks
+    secure: true,    // CRITICAL: Must be true for sameSite: 'none' to work
+    sameSite: 'none',// CRITICAL: Allows Vercel to talk to Render
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 Days
   });
 };
