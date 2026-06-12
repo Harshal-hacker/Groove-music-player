@@ -349,38 +349,63 @@ export default function MainFeed({
             </div>
           </div>
           <div className="groove-tracklist">
-            {filteredPlaylist.map((track, index) => {
-              const displayCover = track.cover || "/Groove.png";
-              const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
-              return (
-                <div 
-                  key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
-                  onClick={() => { 
-                    setPlaybackContext(filteredPlaylist); 
-        
-                    // ---> USE THE NEW ENGINE HERE <---
-                    setActivePlaylistName(getContextName());
-                    setPlayingPlaylistId(selectedPlaylist); 
-                    
-                    setCurrentTrackIndex(playlist.findIndex(s => s._id === track._id));
-                    setIsPlaying(true);
-                    if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
-                  }}
-                  onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
-                >
-                  <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
-                  <img src={displayCover} className="track-thumb" alt="" onError={(e) => { e.target.src = "/Groove.png"; }} />
-                  <div className="track-meta">
-                    <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
-                    <div className="track-artist-sub">{track.artist}</div>
-                  </div>
-                  <div className="track-time">{formatTime(track.duration)}</div>
-                  <div className="track-action-indicator">
-                    {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : <ChevronRight size={16} color="#333" />}
-                  </div>
+            {filteredPlaylist.length === 0 ? (
+              /* 🌟 IMMACULATE EMPTY STATE COMPONENT 🌟 */
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center', background: 'rgba(255,255,255,0.01)', borderRadius: '24px', border: '1px dashed #333', marginTop: '10px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                  <ListMusic size={24} color="#10b981" />
                 </div>
-              );
-            })}
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '800', color: '#fff' }}>This audio deck is empty</h4>
+                <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#64748b', maxWidth: '280px', lineHeight: '1.5', fontWeight: '600' }}>There are no tracks loaded inside this context library yet.</p>
+                
+                {selectedPlaylist ? (
+                  <button 
+                    onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }}
+                    style={{ backgroundColor: '#fff', color: '#000', padding: '10px 24px', borderRadius: '50px', fontSize: '12px', fontWeight: '800', border: 'none', cursor: 'pointer', transition: '0.2s' }}
+                    onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                    onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                  >
+                    ADD TRACKS NOW
+                  </button>
+                ) : (
+                  <p style={{ color: '#10b981', fontSize: '11px', fontWeight: '900', letterSpacing: '1px' }}>PRESS CTRL + K TO SEARCH NEW RELEASES</p>
+                )}
+              </div>
+            ) : (
+              /* NORMAL TRACK RENDERING MAP */
+              filteredPlaylist.map((track, index) => {
+                const displayCover = track.cover || "/Groove.png";
+                const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
+                return (
+                  <div 
+                    key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
+                    onClick={() => { 
+                      setPlaybackContext(filteredPlaylist); 
+          
+                      // ---> USE THE NEW ENGINE HERE <---
+                      setActivePlaylistName(getContextName());
+                      setPlayingPlaylistId(selectedPlaylist); 
+                      
+                      setCurrentTrackIndex(playlist.findIndex(s => s._id === track._id));
+                      setIsPlaying(true);
+                      if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
+                    }}
+                    onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
+                  >
+                    <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
+                    <img src={displayCover} className="track-thumb" alt="" onError={(e) => { e.target.src = "/Groove.png"; }} />
+                    <div className="track-meta">
+                      <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
+                      <div className="track-artist-sub">{track.artist}</div>
+                    </div>
+                    <div className="track-time">{formatTime(track.duration)}</div>
+                    <div className="track-action-indicator">
+                      {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : <ChevronRight size={16} color="#333" />}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       ) : null}

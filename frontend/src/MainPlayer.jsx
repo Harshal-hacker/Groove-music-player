@@ -3,14 +3,30 @@ import { Play, Pause, SkipForward, SkipBack, Volume2, X, VolumeX, Shuffle, PlusC
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
-import Admin from './Admin';
+import { API_BASE_URL } from './config';
+
+import { Suspense, lazy } from 'react'; // 👈 Import Suspense & lazy
 import PlayerDeck from './components/PlayerDeck';
 import { usePlayer } from './context/PlayerContext';
 import Sidebar from './components/Sidebar';
-import MainFeed from './components/MainFeed';
-import Profile from './components/Profile';
-import Settings from './components/Settings';
-import { API_BASE_URL } from './config';
+import MainFeed from './components/MainFeed'; // MainFeed is eagerly loaded because it's the home page!
+
+// ⚡ THE SPEED UPGRADE: Lazy-load heavy components so the initial bundle is tiny
+const Admin = lazy(() => import('./Admin'));
+const Profile = lazy(() => import('./components/Profile'));
+const Settings = lazy(() => import('./components/Settings'));
+
+// ⚡ SKELETON UI COMPONENT: A visual mockup of your app's layout
+const AppSkeleton = () => (
+  <div style={{ backgroundColor: '#000', height: '100vh', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px', boxSizing: 'border-box' }}>
+    <div className="skeleton-pulse" style={{ height: '75px', borderRadius: '24px' }} />
+    <div style={{ display: 'flex', flex: 1, gap: '12px' }}>
+      <div className="skeleton-pulse" style={{ width: '280px', borderRadius: '24px' }} />
+      <div className="skeleton-pulse" style={{ flex: 1, borderRadius: '24px' }} />
+    </div>
+  </div>
+);
+
 
 function MainPlayer() {
   const navigate = useNavigate();
@@ -53,6 +69,7 @@ function MainPlayer() {
   const userMenuRef = useRef(null);
   const avatarRef = useRef(null);
   const curatedShelfRef = useRef(null);
+  const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
   const [userData, setUserData] = useState({ likedSongs: [], role: 'user' });
   const isPlayingFromQueueRef = useRef(false);  
@@ -281,7 +298,17 @@ function MainPlayer() {
         setIsSearchOpen(true);
         return;
       }
-      if (e.key === 'Escape') setIsSearchOpen(false);
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsShortcutHelpOpen(false); // 👈 Close shortcut help on Escape too
+      }
+
+      // 🌟 ADD THIS: Keyboard Shortcut Help Guide (Ctrl + /)
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        setIsShortcutHelpOpen(prev => !prev);
+        return;
+      }
 
       // 🛡️ SAFETY SHIELD: Ignore play/pause if the user is typing in a search box!
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
@@ -794,12 +821,7 @@ function MainPlayer() {
   useEffect(() => { window.scrollTo(0, 0); }, [showLikedOnly]);
 
   if (isLoading || isAuthLoading) {
-    return (
-      <div className="spotify-container loading-screen" style={{ backgroundColor: '#000' }}>
-        <Loader2 size={48} className="spinner" color="#10b981" />
-        <h2 style={{ color: '#fff' }}>Loading your library...</h2>
-      </div>
-    );
+    return <AppSkeleton />; // 👈 Instantly loads the skeleton outline!
   }
 
   if (error) {
@@ -814,17 +836,20 @@ function MainPlayer() {
   // --- Admin Panel Conditional Render ---
   if (showAdmin) {
     return (
-      <Admin 
-        onBack={() => setShowAdmin(false)} 
-        uploadProgress={uploadProgress} 
-        setUploadProgress={setUploadProgress} 
-        isUploading={isUploading} 
-        setIsUploading={setIsUploading}
-        setOverallProgress={setOverallProgress} 
-        setUploadStats={setUploadStats} 
-        setPlaylist={setPlaylist}
-        handleRemoveFromPlaylist={handleRemoveFromPlaylist}
-      />
+      // 👇 Wrap lazy components in Suspense!
+      <Suspense fallback={<AppSkeleton />}>
+        <Admin 
+          onBack={() => setShowAdmin(false)} 
+          uploadProgress={uploadProgress} 
+          setUploadProgress={setUploadProgress} 
+          isUploading={isUploading} 
+          setIsUploading={setIsUploading}
+          setOverallProgress={setOverallProgress} 
+          setUploadStats={setUploadStats} 
+          setPlaylist={setPlaylist}
+          handleRemoveFromPlaylist={handleRemoveFromPlaylist}
+        />
+      </Suspense>
     );
   }
 
@@ -1039,34 +1064,37 @@ function MainPlayer() {
             transition={{ duration: 0.2, ease: "circOut" }}
             style={{ flex: 1, display: 'flex', overflow: 'hidden' }}
           >
-            {location.pathname === '/profile' ? (
-              <Profile 
-                userData={userData}
-                userPlaylists={userPlaylists}
-                playlist={playlist}
-                setCurrentTrackIndex={setCurrentTrackIndex}
-                setIsPlaying={setIsPlaying}
-                setPlaybackContext={setPlaybackContext}
-              />
-            ) : location.pathname === '/settings' ? (
-              <Settings handleLogout={handleLogout} />
-            ) : (
-              <MainFeed 
-                activeCategory={activeCategory}
-                selectedPlaylist={selectedPlaylist}
-                setSelectedPlaylist={setSelectedPlaylist}
-                debouncedQuery={debouncedQuery}
-                userPlaylists={userPlaylists}
-                setUserPlaylists={setUserPlaylists}
-                filteredPlaylist={filteredPlaylist}
-                readyMadePlaylists={readyMadePlaylists}
-                handleContextMenu={handleContextMenu}
-                handleAddToPlaylist={handleAddToPlaylist}
-                handleRemoveFromPlaylist={handleRemoveFromPlaylist}
-                isAdmin={isAdmin}
-                setToast={setToast}
-              />
-            )}
+            {/* 👇 THE SUSPENSE BOUNDARY 👇 */}
+            <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
+              {location.pathname === '/profile' ? (
+                <Profile 
+                  userData={userData}
+                  userPlaylists={userPlaylists}
+                  playlist={playlist}
+                  setCurrentTrackIndex={setCurrentTrackIndex}
+                  setIsPlaying={setIsPlaying}
+                  setPlaybackContext={setPlaybackContext}
+                />
+              ) : location.pathname === '/settings' ? (
+                <Settings handleLogout={handleLogout} />
+              ) : (
+                <MainFeed 
+                  activeCategory={activeCategory}
+                  selectedPlaylist={selectedPlaylist}
+                  setSelectedPlaylist={setSelectedPlaylist}
+                  debouncedQuery={debouncedQuery}
+                  userPlaylists={userPlaylists}
+                  setUserPlaylists={setUserPlaylists}
+                  filteredPlaylist={filteredPlaylist}
+                  readyMadePlaylists={readyMadePlaylists}
+                  handleContextMenu={handleContextMenu}
+                  handleAddToPlaylist={handleAddToPlaylist}
+                  handleRemoveFromPlaylist={handleRemoveFromPlaylist}
+                  isAdmin={isAdmin}
+                  setToast={setToast}
+                />
+              )}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
         
@@ -1533,6 +1561,46 @@ function MainPlayer() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. KEYBOARD SHORTCUT HELP GUIDE */}
+      {/* ========================================================================= */}
+      {isShortcutHelpOpen && (
+        <div 
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'ultraFade 0.2s ease-out' }}
+          onClick={() => setIsShortcutHelpOpen(false)}
+        >
+          <div 
+            style={{ width: '100%', maxWidth: '450px', backgroundColor: '#121212', border: '1px solid #333', borderRadius: '28px', padding: '30px', boxShadow: '0 40px 80px rgba(0,0,0,0.9)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#10b981' }}>Keyboard Controls</h3>
+              <button onClick={() => setIsShortcutHelpOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20}/></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {[
+                { keys: ['Space'], action: 'Play / Pause Track' },
+                { keys: ['Ctrl', 'K'], action: 'Open Global Command Search' },
+                { keys: ['Ctrl', '→'], action: 'Skip to Next Track' },
+                { keys: ['Ctrl', '←'], action: 'Previous Track / Restart' },
+                { keys: ['Ctrl', '/'], action: 'Toggle Shortcut Manual' },
+                { keys: ['Esc'], action: 'Close Modals and Menus' }
+              ].map((item, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid #222' }}>
+                  <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: '600' }}>{item.action}</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {item.keys.map((key, kIdx) => (
+                      <kbd key={kIdx} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '800', boxShadow: '0 2px 0 #000' }}>{key}</kbd>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
