@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipForward, SkipBack, Volume2, X, VolumeX, Shuffle, PlusCircle, ListMusic, Repeat, Home, Search, Settings as SettingsIcon, Heart, Loader2, Plus, Folder, User, ShieldCheck, ArrowLeft, LogOut, FolderPlus, Share2, Link, ChevronRight, Trash2 } from 'lucide-react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 import Admin from './Admin';
 import PlayerDeck from './components/PlayerDeck';
@@ -1028,35 +1029,46 @@ function MainPlayer() {
           handleContextMenu={handleContextMenu}
         />
 
-        {/* ROUTING LOGIC FOR THE MAIN CONTENT AREA */}
-        {location.pathname === '/profile' ? (
-          <Profile 
-            userData={userData}
-            userPlaylists={userPlaylists}
-            playlist={playlist}
-            setCurrentTrackIndex={setCurrentTrackIndex}
-            setIsPlaying={setIsPlaying}
-            setPlaybackContext={setPlaybackContext}
-          />
-        ) : location.pathname === '/settings' ? (
-          <Settings handleLogout={handleLogout} />
-        ) : (
-          <MainFeed 
-            activeCategory={activeCategory}
-            selectedPlaylist={selectedPlaylist}
-            setSelectedPlaylist={setSelectedPlaylist}
-            debouncedQuery={debouncedQuery}
-            userPlaylists={userPlaylists}
-            setUserPlaylists={setUserPlaylists}
-            filteredPlaylist={filteredPlaylist}
-            readyMadePlaylists={readyMadePlaylists}
-            handleContextMenu={handleContextMenu}
-            handleAddToPlaylist={handleAddToPlaylist}
-            handleRemoveFromPlaylist={handleRemoveFromPlaylist}
-            isAdmin={isAdmin}
-            setToast={setToast}
-          />
-        )}
+        {/* ROUTING LOGIC WITH PROFESSIONAL PAGE TRANSITIONS */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname} // Tells Framer Motion when the page changes
+            initial={{ opacity: 0, y: 15 }} // Start slightly invisible and lower
+            animate={{ opacity: 1, y: 0 }}  // Slide up into place
+            exit={{ opacity: 0, y: -15 }}   // Slide up and fade out when leaving
+            transition={{ duration: 0.2, ease: "circOut" }}
+            style={{ flex: 1, display: 'flex', overflow: 'hidden' }}
+          >
+            {location.pathname === '/profile' ? (
+              <Profile 
+                userData={userData}
+                userPlaylists={userPlaylists}
+                playlist={playlist}
+                setCurrentTrackIndex={setCurrentTrackIndex}
+                setIsPlaying={setIsPlaying}
+                setPlaybackContext={setPlaybackContext}
+              />
+            ) : location.pathname === '/settings' ? (
+              <Settings handleLogout={handleLogout} />
+            ) : (
+              <MainFeed 
+                activeCategory={activeCategory}
+                selectedPlaylist={selectedPlaylist}
+                setSelectedPlaylist={setSelectedPlaylist}
+                debouncedQuery={debouncedQuery}
+                userPlaylists={userPlaylists}
+                setUserPlaylists={setUserPlaylists}
+                filteredPlaylist={filteredPlaylist}
+                readyMadePlaylists={readyMadePlaylists}
+                handleContextMenu={handleContextMenu}
+                handleAddToPlaylist={handleAddToPlaylist}
+                handleRemoveFromPlaylist={handleRemoveFromPlaylist}
+                isAdmin={isAdmin}
+                setToast={setToast}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
         
         {/* --- RIGHT QUEUE --- */}
         <aside style={{
