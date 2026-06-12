@@ -30,7 +30,8 @@ function MainPlayer() {
     audioRef,
     selectedPlaylist, setSelectedPlaylist,
     syncPlayback,setActivePlaylistName,
-    forceSyncNow,setPlayingPlaylistId
+    forceSyncNow,setPlayingPlaylistId,
+    volume
   } = usePlayer();
 
   // DERIVE AUTH STATUS FROM GLOBAL CONTEXT
@@ -272,16 +273,42 @@ function MainPlayer() {
   }, [searchQuery]);
 
   useEffect(() => {
-    const handleSearchShortcuts = (e) => {
+    const handleGlobalShortcuts = (e) => {
+      // 1. Search Bar Shortcut (Ctrl + K)
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault(); setIsSearchOpen(true);
+        e.preventDefault(); 
+        setIsSearchOpen(true);
+        return;
       }
       if (e.key === 'Escape') setIsSearchOpen(false);
-    };
-    window.addEventListener('keydown', handleSearchShortcuts);
-    return () => window.removeEventListener('keydown', handleSearchShortcuts);
-  }, []);
 
+      // 🛡️ SAFETY SHIELD: Ignore play/pause if the user is typing in a search box!
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return; 
+      }
+
+      // 2. Spacebar OR Dedicated Media Play/Pause Button
+      if (e.code === 'Space' || e.code === 'MediaPlayPause') {
+        e.preventDefault(); 
+        togglePlayPause();
+      }
+
+      // 3. Ctrl+Arrows OR Dedicated Media Skip Buttons
+      if ((e.ctrlKey && e.code === 'ArrowRight') || e.code === 'MediaTrackNext') {
+        e.preventDefault();
+        handleNext();
+      }
+      if ((e.ctrlKey && e.code === 'ArrowLeft') || e.code === 'MediaTrackPrevious') {
+        e.preventDefault();
+        handlePrev();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+    
+  }, [isPlaying, volume, currentTrackIndex, queue, playbackContext, playlist]);
+  
   useEffect(() => {
     const userId = currentUser?._id;
     if (!userId || !currentTrack || !audioRef.current) return;
@@ -586,23 +613,45 @@ function MainPlayer() {
   };
 
   const toggleLike = async (songId, e) => {
-    if (e) e.stopPropagation();
-    const userId = currentUser?._id;
-    if (!userId) return alert("Please log in!");
+  if (e) e.stopPropagation();
+  const userId = currentUser?._id;
+  if (!userId) return alert("Please log in!");
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/users/toggle-like`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, songId }),
-        credentials: 'include' // <-- ADDED
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserData(prev => ({ ...prev, likedSongs: data.likedSongs }));
-      }
-    } catch (err) { console.error("Like toggle failed:", err); }
-  };
+  // 1. BACKUP: Store current state in case we need to roll back
+  const previousLikes = userData.likedSongs;
+
+  // 2. OPTIMISTIC UPDATE: Flip the heart instantly
+  setUserData(prev => ({ 
+    ...prev, 
+    likedSongs: prev.likedSongs.includes(songId) 
+      ? prev.likedSongs.filter(id => id !== songId) 
+      : [...prev.likedSongs, songId] 
+  }));
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/users/toggle-like`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, songId }),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error("Server rejected request");
+    }
+
+    const data = await response.json();
+    // 3. SYNC: Optional, but good practice to sync with the "source of truth"
+    setUserData(prev => ({ ...prev, likedSongs: data.likedSongs }));
+
+  } catch (err) {
+    console.error("Like toggle failed:", err);
+    // 4. ROLLBACK: If the server call failed, revert the heart to its previous state
+    setUserData(prev => ({ ...prev, likedSongs: previousLikes }));
+    setToast({ message: "Sync failed. Please check your connection.", type: 'error' });
+    setTimeout(() => setToast(null), 3000);
+  }
+};
 
   const handleInlineRename = async () => {
     const playlistId = selectedPlaylist;
@@ -647,26 +696,40 @@ function MainPlayer() {
   }, []);
 
   const handleAddToPlaylist = async (songId, playlistId) => {
-    setContextMenu(null);
+    // 1. BACKUP: Store current state
+    const previousPlaylists = [...userPlaylists];
+
+    // 2. OPTIMISTIC UPDATE: Update UI instantly
+    setUserPlaylists(prev => prev.map(pl => {
+      if (pl._id === playlistId) {
+        return { ...pl, songIds: [...pl.songIds, songId] };
+      }
+      return pl;
+    }));
+
     const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
     const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
-    const userId = currentUser?._id;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId }),
-        credentials: 'include' // <-- ADDED
+        body: JSON.stringify({ songId, userId: currentUser?._id }),
+        credentials: 'include'
       });
 
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
-        setToast({ message: `Added to "${playlistName}" successfully!`, type: 'success' });
-        setTimeout(() => setToast(null), 3000);
-      }
-    } catch (error) { console.error(error); }
+      if (!response.ok) throw new Error("Server failed");
+
+      setToast({ message: `Added to "${playlistName}"!`, type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+
+    } catch (error) {
+      // 3. ROLLBACK: Revert if the server call fails
+      setUserPlaylists(previousPlaylists);
+      console.error("Add to playlist failed:", error);
+      setToast({ message: "Failed to add song. Try again.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   const songsToDisplay = playlist.filter(song => {
@@ -676,19 +739,37 @@ function MainPlayer() {
   });
 
   const handleRemoveFromPlaylist = async (songId, playlistId) => {
+    // 1. BACKUP: Store current state
+    const previousPlaylists = [...userPlaylists];
+
+    // 2. OPTIMISTIC UPDATE: Remove song instantly
+    setUserPlaylists(prev => prev.map(pl => {
+      if (pl._id === playlistId) {
+        return { ...pl, songIds: pl.songIds.filter(id => (id._id || id) !== songId) };
+      }
+      return pl;
+    }));
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId }),
-        credentials: 'include' // <-- ADDED
+        body: JSON.stringify({ songId }), // Backend assumes context is handled by JWT/Auth
+        credentials: 'include'
       });
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
-        setContextMenu(null);
-      }
-    } catch (error) { console.error("Failed to remove song:", error); }
+
+      if (!response.ok) throw new Error("Server failed");
+
+      setToast({ message: "Song removed!", type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+
+    } catch (error) {
+      // 3. ROLLBACK: Revert if the server call fails
+      setUserPlaylists(previousPlaylists);
+      console.error("Remove from playlist failed:", error);
+      setToast({ message: "Failed to remove song. Try again.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   const filteredPlaylist = playlist.filter((song) => {
@@ -734,9 +815,14 @@ function MainPlayer() {
     return (
       <Admin 
         onBack={() => setShowAdmin(false)} 
-        uploadProgress={uploadProgress} setUploadProgress={setUploadProgress} 
-        isUploading={isUploading} setIsUploading={setIsUploading}
-        setOverallProgress={setOverallProgress} setUploadStats={setUploadStats} setPlaylist={setPlaylist}
+        uploadProgress={uploadProgress} 
+        setUploadProgress={setUploadProgress} 
+        isUploading={isUploading} 
+        setIsUploading={setIsUploading}
+        setOverallProgress={setOverallProgress} 
+        setUploadStats={setUploadStats} 
+        setPlaylist={setPlaylist}
+        handleRemoveFromPlaylist={handleRemoveFromPlaylist}
       />
     );
   }
@@ -965,6 +1051,8 @@ function MainPlayer() {
             filteredPlaylist={filteredPlaylist}
             readyMadePlaylists={readyMadePlaylists}
             handleContextMenu={handleContextMenu}
+            handleAddToPlaylist={handleAddToPlaylist}
+            handleRemoveFromPlaylist={handleRemoveFromPlaylist}
             isAdmin={isAdmin}
             setToast={setToast}
           />

@@ -5,7 +5,18 @@ import axios from 'axios';
 import jsmediatags from 'jsmediatags';
 import { usePlayer } from './context/PlayerContext'; // <-- 1. IMPORT CONTEXT
 
-function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUploading, setOverallProgress, setUploadStats, setPlaylist }) {
+function Admin({ 
+  onBack, 
+  uploadProgress, 
+  setUploadProgress, 
+  isUploading, 
+  setIsUploading, 
+  setOverallProgress, 
+  setUploadStats, 
+  setPlaylist,
+  handleRemoveFromPlaylist
+}) {
+  
   // 2. SECURE IDENTITY STATE
   const { currentUser } = usePlayer();
 
@@ -66,28 +77,6 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
       }
     } catch (err) {
       console.error("Delete failed:", err);
-    }
-  };
-
-  const handleRemoveFromPlaylist = async (songId, playlistId) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId }),
-        credentials: 'include' // <-- SECURED
-      });
-
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        if (typeof setUserPlaylists === 'function') {
-           setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
-        }
-        if (typeof setContextMenu === 'function') setContextMenu(null);
-        console.log("Song removed successfully from playlist");
-      }
-    } catch (error) {
-      console.error("Failed to remove song:", error);
     }
   };
 

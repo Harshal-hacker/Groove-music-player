@@ -14,6 +14,8 @@ export default function MainFeed({
   filteredPlaylist,
   readyMadePlaylists,
   handleContextMenu,
+  handleAddToPlaylist,
+  handleRemoveFromPlaylist,
   isAdmin,
   setToast,
 }) {
@@ -85,52 +87,6 @@ export default function MainFeed({
       console.error("Rename failed:", error); 
     } finally { 
       setIsEditingName(false); 
-    }
-  };
-
-  const handleAddToPlaylist = async (songId, playlistId) => {
-    const targetPlaylist = userPlaylists.find(pl => pl._id === playlistId);
-    const playlistName = targetPlaylist ? targetPlaylist.name : "Playlist";
-    
-    // Instead of localStorage, use the secure context identity
-    const userId = currentUser?._id; 
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/add-song`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId }),
-        credentials: 'include' // <-- VIP PASS SECURE COOKIE ATTACHED
-      });
-
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
-        setToast({ message: `Added to "${playlistName}" successfully!`, type: 'success' });
-        setTimeout(() => setToast(null), 3000);
-      }
-    } catch (error) { console.error(error); }
-  };
-
-  const handleRemoveFromPlaylist = async (songId, playlistId) => {
-    const userId = currentUser?._id;
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/remove-song`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId, userId }),
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        const updatedPlaylist = await response.json();
-        setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? updatedPlaylist : pl));
-        setToast({ message: "Removed from playlist", type: 'success' });
-        setTimeout(() => setToast(null), 3000);
-      }
-    } catch (error) {
-      console.error("Failed to remove song:", error);
     }
   };
 
@@ -329,7 +285,7 @@ export default function MainFeed({
                           setActivePlaylistName(getContextName());
                           setPlayingPlaylistId(selectedPlaylist); 
                           
-                          setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
+                          setCurrentTrackIndex(playlist.findIndex(s => s._id === track._id));
                           setIsPlaying(true);
                           if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
                         }
@@ -406,7 +362,7 @@ export default function MainFeed({
                     setActivePlaylistName(getContextName());
                     setPlayingPlaylistId(selectedPlaylist); 
                     
-                    setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
+                    setCurrentTrackIndex(playlist.findIndex(s => s._id === track._id));
                     setIsPlaying(true);
                     if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
                   }}

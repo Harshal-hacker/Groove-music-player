@@ -15,8 +15,14 @@ export const usePlayer = () => useContext(PlayerContext);
 
 export const PlayerProvider = ({ children }) => {
   const audioRef = useRef(null);
-  const pendingRestoreTime = useRef(0); // Holds the time until the MP3 is ready
+  const pendingRestoreTime = useRef(0); 
   
+  // ==========================================
+  // 🧠 NEW: THE QUEUE MEMORY SYSTEM
+  // ==========================================
+  const isPlayingFromQueueRef = useRef(false);
+  const lastContextIndexRef = useRef(0);
+
   // AUTH STATE
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -36,10 +42,7 @@ export const PlayerProvider = ({ children }) => {
   
   const currentTrack = playlist.length > 0 ? playlist[currentTrackIndex] : null;
 
-  // ==========================================
-  // 🚀 UPGRADED: PERSISTENT QUEUE STATE
-  // ==========================================
-  // These now load from local storage so your queue survives a refresh!
+  // PERSISTENT QUEUE STATE
   const [queue, setQueue] = useState(() => loadSetting('groove_queue', []));
   const [playbackContext, setPlaybackContext] = useState(() => loadSetting('groove_playbackContext', []));
   const [activePlaylistName, setActivePlaylistName] = useState(() => loadSetting('groove_activePlaylistName', "All Songs"));
@@ -53,16 +56,12 @@ export const PlayerProvider = ({ children }) => {
   const [privateProfile, setPrivateProfile] = useState(() => loadSetting('groove_privateProfile', false));
   const [explicitContent, setExplicitContent] = useState(() => loadSetting('groove_explicitContent', true));
 
-  // ==========================================
-  // MEMORY SAVERS (Auto-saves to browser memory on change)
-  // ==========================================
+  // MEMORY SAVERS 
   useEffect(() => localStorage.setItem('groove_highQuality', JSON.stringify(highQuality)), [highQuality]);
   useEffect(() => localStorage.setItem('groove_normalizeVolume', JSON.stringify(normalizeVolume)), [normalizeVolume]);
   useEffect(() => localStorage.setItem('groove_crossfade', JSON.stringify(crossfade)), [crossfade]);
   useEffect(() => localStorage.setItem('groove_privateProfile', JSON.stringify(privateProfile)), [privateProfile]);
   useEffect(() => localStorage.setItem('groove_explicitContent', JSON.stringify(explicitContent)), [explicitContent]);
-  
-  // NEW: Saves your queue and context!
   useEffect(() => localStorage.setItem('groove_queue', JSON.stringify(queue)), [queue]);
   useEffect(() => localStorage.setItem('groove_playbackContext', JSON.stringify(playbackContext)), [playbackContext]);
   useEffect(() => localStorage.setItem('groove_activePlaylistName', JSON.stringify(activePlaylistName)), [activePlaylistName]);
@@ -81,21 +80,14 @@ export const PlayerProvider = ({ children }) => {
       });
   }, []);
 
-  // ==========================================
-  // SERVER SYNC LOGIC (The Saver)
-  // ==========================================
+  // SERVER SYNC LOGIC
   const syncPlayback = async (trackId, time, playlistId) => {
     if (!currentUser) return; 
     try {
-      // FIX: Use the specific user ID path
       await fetch(`${API_BASE_URL}/api/users/${currentUser._id}/playback`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'keepalive': 'true' },
-        body: JSON.stringify({ 
-          songId: trackId, 
-          currentTime: time, 
-          playlistId: playlistId 
-        }),
+        body: JSON.stringify({ songId: trackId, currentTime: time, playlistId: playlistId }),
         credentials: 'include'
       });
     } catch (err) {
@@ -109,15 +101,11 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
-  // ==========================================
-  // INSTANT ARRIVAL SYNC
-  // ==========================================
-  // The millisecond the song changes, tell the database we arrived, even if paused!
   useEffect(() => {
     if (currentTrack && currentUser) {
       syncPlayback(currentTrack._id, 0, selectedPlaylist);
     }
-  }, [currentTrack?._id]); // This specifically watches for the song ID to change
+  }, [currentTrack?._id]); 
 
   useEffect(() => {
     const syncState = () => {
@@ -126,14 +114,10 @@ export const PlayerProvider = ({ children }) => {
       }
     };
 
-    if (!isPlaying && currentTrack) {
-      syncState();
-    }
+    if (!isPlaying && currentTrack) syncState();
 
     let interval;
-    if (currentTrack && isPlaying) {
-      interval = setInterval(syncState, 10000); 
-    }
+    if (currentTrack && isPlaying) interval = setInterval(syncState, 10000); 
 
     const handleUnload = () => syncState();
     window.addEventListener('beforeunload', handleUnload);
@@ -144,17 +128,13 @@ export const PlayerProvider = ({ children }) => {
     };
   }, [isPlaying, currentTrack, currentUser, selectedPlaylist]);
 
-  // ==========================================
-  // RESTORER: Load from Server
-  // ==========================================
+  // RESTORER
   useEffect(() => {
-    // 1. If the user logs out, reset the flag so it is ready for the next login!
     if (!currentUser) {
       setHasRestoredSession(false);
       return;
     }
 
-    // 2. If a user is logged in and we haven't restored yet, do it!
     if (playlist.length > 0 && currentUser && !hasRestoredSession) {
       const savedTrackId = currentUser.activeSession?.trackId?._id || currentUser.activeSession?.trackId;
       const savedTime = currentUser.activeSession?.currentTime;
@@ -163,20 +143,14 @@ export const PlayerProvider = ({ children }) => {
         const savedIndex = playlist.findIndex(s => s._id === savedTrackId);
         if (savedIndex !== -1) {
           setCurrentTrackIndex(savedIndex);
-
-          if (savedTime > 0) {
-            pendingRestoreTime.current = parseFloat(savedTime);
-          }
+          if (savedTime > 0) pendingRestoreTime.current = parseFloat(savedTime);
         }
       }
-      setHasRestoredSession(true); // Mark as done for this session
+      setHasRestoredSession(true); 
     }
   }, [playlist, currentUser, hasRestoredSession]);
 
-  // ==========================================
   // GLOBAL AUDIO ENGINE LOGIC
-  // ==========================================
-
   useEffect(() => {
     if (audioRef.current && currentTrack) {
       if (audioRef.current.src !== currentTrack.src) {
@@ -200,18 +174,51 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
+  const playFromPlaylist = (songsArray, clickedIndex, playlistName = "Unknown", playlistId = null) => {
+    setPlaylist(songsArray);
+    setPlaybackContext(songsArray);
+    setCurrentTrackIndex(clickedIndex);
+    setActivePlaylistName(playlistName);
+    setPlayingPlaylistId(playlistId);
+    setIsPlaying(true);
+  };
+
+  // ==========================================
+  // 🧠 NEW: MEMORY TRACKER EFFECT
+  // ==========================================
+  // This safely remembers your spot in the main playlist before the queue interrupts!
+  useEffect(() => {
+    if (isPlayingFromQueueRef.current) return; 
+    const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
+    if (currentTrack) {
+      const indexInContext = currentPool.findIndex(s => s._id === currentTrack._id);
+      if (indexInContext !== -1) {
+        lastContextIndexRef.current = indexInContext;
+      }
+    }
+  }, [currentTrack, playbackContext, playlist]);
+
+  // ==========================================
+  // UPGRADED NEXT & PREV CONTROLS
+  // ==========================================
   const handleNext = () => {
     forceSyncNow();
+
+    // 1. Is there a manual song waiting in the queue?
     if (queue.length > 0) {
       const nextFromQueue = queue[0];
       const indexInGlobal = playlist.findIndex(s => s._id === nextFromQueue._id);
       
       if (indexInGlobal !== -1) {
+        isPlayingFromQueueRef.current = true; // Turn ON queue mode
         setCurrentTrackIndex(indexInGlobal);
         setQueue(prev => prev.slice(1)); 
         return;
       }
     }
+
+    // 2. No more queue? Turn OFF queue mode!
+    isPlayingFromQueueRef.current = false;
 
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     if (currentPool.length === 0) return; 
@@ -226,9 +233,11 @@ export const PlayerProvider = ({ children }) => {
       return;
     }
 
+    // 3. Find where we are using the Memory Tracker
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+    const baseIndex = currentIndexInPool !== -1 ? currentIndexInPool : lastContextIndexRef.current;
     
-    if (currentIndexInPool === currentPool.length - 1) {
+    if (baseIndex === currentPool.length - 1) {
       if (repeatMode === 'all') {
         setCurrentTrackIndex(playlist.findIndex(s => s._id === currentPool[0]._id));
       } else {
@@ -240,15 +249,15 @@ export const PlayerProvider = ({ children }) => {
           audioRef.current.pause();
           audioRef.current.currentTime = 0;
         }
-        return;
       }
     } else {
-      const nextSong = currentPool[currentIndexInPool + 1];
+      const nextSong = currentPool[baseIndex + 1];
       setCurrentTrackIndex(playlist.findIndex(s => s._id === nextSong._id));
     }
   };
 
   const handlePrev = () => {
+    forceSyncNow();
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
     if (currentPool.length === 0) return;
 
@@ -257,14 +266,32 @@ export const PlayerProvider = ({ children }) => {
       return;
     }
 
-    const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+    // 🚀 THE NEW FIX: Are we currently in a Queued song?
+    if (isPlayingFromQueueRef.current) {
+      // Escape the queue and return exactly to the interrupted song (Song 9)
+      isPlayingFromQueueRef.current = false;
+      
+      const interruptedSong = currentPool[lastContextIndexRef.current];
+      if (interruptedSong) {
+        setCurrentTrackIndex(playlist.findIndex(s => s._id === interruptedSong._id));
+      }
+      return; // Stop the function here so it doesn't subtract 1!
+    }
 
-    if (currentIndexInPool === 0) {
+    // NORMAL LOGIC: If we are NOT in the queue, do the normal "subtract 1" math
+    isPlayingFromQueueRef.current = false; 
+
+    const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
+    const baseIndex = currentIndexInPool !== -1 ? currentIndexInPool : lastContextIndexRef.current;
+
+    if (baseIndex > 0) {
+      const prevSong = currentPool[baseIndex - 1];
+      setCurrentTrackIndex(playlist.findIndex(s => s._id === prevSong._id));
+    } else if (baseIndex === 0) {
       const lastSong = currentPool[currentPool.length - 1];
       setCurrentTrackIndex(playlist.findIndex(s => s._id === lastSong._id));
     } else {
-      const prevSong = currentPool[currentIndexInPool - 1];
-      setCurrentTrackIndex(playlist.findIndex(s => s._id === prevSong._id));
+      if (audioRef.current) audioRef.current.currentTime = 0;
     }
   };
 
@@ -290,8 +317,10 @@ export const PlayerProvider = ({ children }) => {
       privateProfile, setPrivateProfile,
       explicitContent, setExplicitContent,
       selectedPlaylist, setSelectedPlaylist,
-      syncPlayback,forceSyncNow,
-      playingPlaylistId, setPlayingPlaylistId
+      syncPlayback, forceSyncNow,
+      playingPlaylistId, setPlayingPlaylistId,
+      playFromPlaylist,
+      isPlayingFromQueueRef // 👈 EXPORTED FOR MAINPLAYER TO USE
     }}>
       {!isAuthLoading && children}
       {currentTrack && (
