@@ -87,10 +87,15 @@ export const PlayerProvider = ({ children }) => {
   const syncPlayback = async (trackId, time, playlistId) => {
     if (!currentUser) return; 
     try {
-      await fetch(`${API_BASE_URL}/api/user/sync-playback`, {
+      // FIX: Use the specific user ID path
+      await fetch(`${API_BASE_URL}/api/users/${currentUser._id}/playback`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'keepalive': 'true' },
-        body: JSON.stringify({ trackId, time, playlistId }),
+        body: JSON.stringify({ 
+          songId: trackId, 
+          currentTime: time, 
+          playlistId: playlistId 
+        }),
         credentials: 'include'
       });
     } catch (err) {

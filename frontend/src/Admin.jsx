@@ -439,68 +439,54 @@ function Admin({ onBack, uploadProgress, setUploadProgress, isUploading, setIsUp
           </form>
 
           <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FolderPlus size={20} color="#10b981" /> 
-              Import Folder
-            </h3>
-            
-            <div 
-              className="bulk-drop-box"
-              onClick={() => document.getElementById('bulk-folder-input').click()}
-              style={{
-                width: '100%',
-                padding: '30px',
-                border: '2px dashed rgba(16, 185, 129, 0.3)',
-                borderRadius: '24px',
-                textAlign: 'center',
-                background: 'rgba(16, 185, 129, 0.02)',
-                cursor: 'pointer',
-                transition: '0.3s'
-              }}
-            >
-              <div style={{ marginBottom: '15px' }}>
-                <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
-              </div>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>Import Folders</h4>
-              <p style={{ color: '#64748b', fontSize: '11px', margin: 0, lineHeight: '1.4' }}>
-                Select folders to automatically<br/>create grouped playlists
-              </p>
+  <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+    <FolderPlus size={20} color="#10b981" /> 
+    Import Media
+  </h3>
+  
+  <div style={{
+    width: '100%', padding: '30px', border: '2px dashed rgba(16, 185, 129, 0.3)',
+    borderRadius: '24px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)',
+  }}>
+    <div style={{ marginBottom: '15px' }}>
+      <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
+    </div>
+    <h4 style={{ margin: '0 0 15px 0', fontSize: '14px' }}>Add Tracks to Library</h4>
+    
+    {/* SPLIT BUTTONS */}
+    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+      <button 
+        type="button"
+        onClick={() => document.getElementById('bulk-folder-input').click()}
+        style={{
+          flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)',
+          color: '#10b981', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)'}
+        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
+      >
+        BROWSE FOLDER
+      </button>
+      
+      <button 
+        type="button"
+        onClick={() => document.getElementById('bulk-files-input').click()}
+        style={{
+          flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)',
+          color: '#fff', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+      >
+        SELECT FILES
+      </button>
+    </div>
 
-              {uploadProgress > 0 && (
-                <div style={{ width: '100%', marginTop: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981' }}>UPLOADING...</span>
-                    <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981' }}>{uploadProgress}%</span>
-                  </div>
-                  <div style={{ 
-                    width: '100%', 
-                    height: '6px', 
-                    backgroundColor: 'rgba(255,255,255,0.05)', 
-                    borderRadius: '10px',
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{ 
-                      width: `${uploadProgress}%`, 
-                      height: '100%', 
-                      backgroundColor: '#10b981', 
-                      boxShadow: '0 0 15px rgba(16, 185, 129, 0.5)',
-                      transition: 'width 0.2s ease-out' 
-                    }} />
-                  </div>
-                </div>
-              )}
-              
-              <input 
-                id="bulk-folder-input"
-                type="file" 
-                webkitdirectory="true" 
-                directory="true" 
-                multiple 
-                style={{ display: 'none' }} 
-                onChange={handleFolderUpload} 
-              />
-            </div>
-          </div>
+    {/* Hidden Inputs Stay Exactly the Same */}
+    <input id="bulk-folder-input" type="file" webkitdirectory="true" directory="true" multiple style={{ display: 'none' }} onChange={handleFolderUpload} />
+    <input id="bulk-files-input" type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleFolderUpload} />
+  </div>
+</div>
         </div>
 
         {/* RIGHT: LIBRARY MANAGEMENT */}
