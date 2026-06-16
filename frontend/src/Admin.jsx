@@ -4,6 +4,7 @@ import { API_BASE_URL } from './config';
 import axios from 'axios';
 import jsmediatags from 'jsmediatags';
 import { usePlayer } from './context/PlayerContext'; // <-- 1. IMPORT CONTEXT
+import SuccessModal from './components/SuccessModal';
 
 function Admin({ 
   onBack, 
@@ -18,8 +19,6 @@ function Admin({
 }) {
   
   // 2. SECURE IDENTITY STATE
-  const { currentUser } = usePlayer();
-
   // --- Form State ---
   const [songData, setSongData] = useState({ title: '', artist: '', duration: 0 });
   const [audioFile, setAudioFile] = useState(null);
@@ -30,6 +29,8 @@ function Admin({
   // --- Management State ---
   const [existingSongs, setExistingSongs] = useState([]);
   const [mgmtSearch, setMgmtSearch] = useState('');
+  const { currentUser, uploadQueue, setUploadQueue, isQueueMinimized, setIsQueueMinimized, setUploadAbortController } = usePlayer();
+  const [successAlert, setSuccessAlert] = useState({ isOpen: false, message: '' });
 
   // Fetch library for management
   useEffect(() => {
@@ -163,6 +164,9 @@ function Admin({
     setUploadStats({ current: 1, total: audioFiles.length });
     const fileProgressTracker = new Array(audioFiles.length).fill(0);
     const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0); // Calculate total size once
+
+    // ⚡ NEW: Initialize the queue with all files set to 'pending' before the loop starts
+    setUploadQueue(audioFiles.map(f => ({ name: f.name, progress: 0, status: 'pending' })));
     
     const extractMetadata = (file) => {
       return new Promise((resolve) => {
@@ -183,6 +187,10 @@ function Admin({
         });
       });
     };
+
+    // ⚡ 1. NEW: Create the kill switch and save it to the global context
+    const controller = new AbortController();
+    setUploadAbortController(controller);
 
     try {
       const uploadedTracks = []; // Array to collect successful uploads
@@ -205,16 +213,28 @@ function Admin({
           // We await THIS specific upload before moving to the next loop iteration
           const res = await axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
             withCredentials: true, // <-- AXIOS SECURE COOKIE ATTACHMENT
+            signal: controller.signal, // ⚡ 2. NEW: Attach the kill switch to Axios!
             onUploadProgress: (progressEvent) => {
               fileProgressTracker[index] = progressEvent.loaded;
               const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
               const globalPercentage = Math.min(Math.round((totalLoadedBytes / totalBytesAllFiles) * 100), 100);
               setOverallProgress(globalPercentage);
               setUploadProgress(globalPercentage);
+
+              // ⚡ NEW: Update this specific file's progress in the visual queue
+              const filePercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadQueue(prev => prev.map(item => 
+                item.name === file.name ? { ...item, progress: filePercent, status: 'uploading' } : item
+              ));
             }
           });
 
           uploadedTracks.push(res.data); // Save the track if successful
+
+          // ⚡ NEW: Mark the file as perfectly completed!
+          setUploadQueue(prev => prev.map(item => 
+            item.name === file.name ? { ...item, progress: 100, status: 'completed' } : item
+          ));
           
           // Only update the "current" file count text if we aren't on the very last file
           if (index < audioFiles.length - 1) {
@@ -222,9 +242,27 @@ function Admin({
           }
 
         } catch (fileErr) {
-          console.error(`Failed to upload ${file.name}:`, fileErr);
-          // By putting this try/catch INSIDE the loop, if one song fails, 
-          // it won't crash the entire folder upload. It just moves to the next song!
+          // ⚡ 3. NEW: If the error is an Abort, break the loop immediately!
+          if (axios.isCancel(fileErr)) {
+            console.log("🛑 Upload pipeline terminated by user.");
+            break; // This word instantly stops the 'for' loop from moving to the next file
+          }
+          // ⚡ THE FIX: Check if the server responded with our friendly 409 Duplicate code
+          if (fileErr.response && fileErr.response.status === 409) {
+            console.warn(`⏭️ Skipped duplicate: ${file.name}`);
+            // ⚡ NEW: Mark as skipped in the UI so the user knows it wasn't an error
+            setUploadQueue(prev => prev.map(item => 
+              item.name === file.name ? { ...item, status: 'skipped' } : item
+            ));
+            continue; // 🚀 Tells the loop to ignore this and jump to the next song!
+          }
+          
+          // If it is a REAL error (like a 500 Server Crash), log it in red
+          console.error(`❌ Failed to upload ${file.name}:`, fileErr);
+          // ⚡ NEW: Mark as error in the UI
+          setUploadQueue(prev => prev.map(item => 
+            item.name === file.name ? { ...item, status: 'error' } : item
+          ));
         }
       }
       // ========================================================
@@ -254,13 +292,18 @@ function Admin({
       });
 
       if (curationResponse.ok) {
-        alert(`Success! Uploaded ${uploadedTracks.length} tracks and compiled them into the Curated Playlist: "${folderName}" instantly.`);
+        setSuccessAlert({
+          isOpen: true,
+          message: `Successfully uploaded ${uploadedTracks.length} tracks and compiled them into the Curated Playlist: "${folderName}".`
+        });
       }
 
     } catch (err) {
       console.error("Pipeline breakdown:", err);
       alert("An error occurred during multi-file streaming.");
     } finally {
+      // ⚡ 4. NEW: Clean up the kill switch when the upload is totally finished
+      setUploadAbortController(null);
       setTimeout(() => {
         setIsUploading(false);
         setOverallProgress(0);
@@ -428,54 +471,54 @@ function Admin({
           </form>
 
           <div className="studio-bulk-section" style={{ marginTop: '40px', paddingTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-  <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-    <FolderPlus size={20} color="#10b981" /> 
-    Import Media
-  </h3>
-  
-  <div style={{
-    width: '100%', padding: '30px', border: '2px dashed rgba(16, 185, 129, 0.3)',
-    borderRadius: '24px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)',
-  }}>
-    <div style={{ marginBottom: '15px' }}>
-      <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
-    </div>
-    <h4 style={{ margin: '0 0 15px 0', fontSize: '14px' }}>Add Tracks to Library</h4>
-    
-    {/* SPLIT BUTTONS */}
-    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-      <button 
-        type="button"
-        onClick={() => document.getElementById('bulk-folder-input').click()}
-        style={{
-          flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)',
-          color: '#10b981', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
-        }}
-        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)'}
-        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
-      >
-        BROWSE FOLDER
-      </button>
-      
-      <button 
-        type="button"
-        onClick={() => document.getElementById('bulk-files-input').click()}
-        style={{
-          flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)',
-          color: '#fff', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
-        }}
-        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-      >
-        SELECT FILES
-      </button>
-    </div>
+            <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <FolderPlus size={20} color="#10b981" /> 
+              Import Media
+            </h3>
+            
+            <div style={{
+              width: '100%', padding: '30px', border: '2px dashed rgba(16, 185, 129, 0.3)',
+              borderRadius: '24px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)',
+            }}>
+              <div style={{ marginBottom: '15px' }}>
+                <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
+              </div>
+              <h4 style={{ margin: '0 0 15px 0', fontSize: '14px' }}>Add Tracks to Library</h4>
+              
+              {/* SPLIT BUTTONS */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button 
+                  type="button"
+                  onClick={() => document.getElementById('bulk-folder-input').click()}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)',
+                    color: '#10b981', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
+                >
+                  BROWSE FOLDER
+                </button>
+                
+                <button 
+                  type="button"
+                  onClick={() => document.getElementById('bulk-files-input').click()}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)',
+                    color: '#fff', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                >
+                  SELECT FILES
+                </button>
+              </div>
 
-    {/* Hidden Inputs Stay Exactly the Same */}
-    <input id="bulk-folder-input" type="file" webkitdirectory="true" directory="true" multiple style={{ display: 'none' }} onChange={handleFolderUpload} />
-    <input id="bulk-files-input" type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleFolderUpload} />
-  </div>
-</div>
+              {/* Hidden Inputs Stay Exactly the Same */}
+              <input id="bulk-folder-input" type="file" webkitdirectory="true" directory="true" multiple style={{ display: 'none' }} onChange={handleFolderUpload} />
+              <input id="bulk-files-input" type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleFolderUpload} />
+            </div>
+          </div>
         </div>
 
         {/* RIGHT: LIBRARY MANAGEMENT */}
@@ -546,7 +589,15 @@ function Admin({
           display: flex; align-items: center; justify-content: center;
         }
         .mgmt-btn:hover { background: rgba(255,255,255,0.1); }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
       `}</style>
+
+      {/* ⚡ Drop the Success Modal right here at the bottom */}
+      <SuccessModal 
+        isOpen={successAlert.isOpen} 
+        message={successAlert.message}
+        onClose={() => setSuccessAlert({ isOpen: false, message: '' })} 
+      />
     </div>
   );
 }

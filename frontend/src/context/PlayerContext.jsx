@@ -46,6 +46,9 @@ export const PlayerProvider = ({ children }) => {
   const [queue, setQueue] = useState(() => loadSetting('groove_queue', []));
   const [playbackContext, setPlaybackContext] = useState(() => loadSetting('groove_playbackContext', []));
   const [activePlaylistName, setActivePlaylistName] = useState(() => loadSetting('groove_activePlaylistName', "All Songs"));
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [isQueueMinimized, setIsQueueMinimized] = useState(false);
+  const [uploadAbortController, setUploadAbortController] = useState(null);
   const [playingPlaylistId, setPlayingPlaylistId] = useState(() => loadSetting('groove_playingPlaylistId', null));
   useEffect(() => localStorage.setItem('groove_playingPlaylistId', JSON.stringify(playingPlaylistId)), [playingPlaylistId]);
 
@@ -320,7 +323,12 @@ export const PlayerProvider = ({ children }) => {
       syncPlayback, forceSyncNow,
       playingPlaylistId, setPlayingPlaylistId,
       playFromPlaylist,
-      isPlayingFromQueueRef // 👈 EXPORTED FOR MAINPLAYER TO USE
+      isPlayingFromQueueRef,
+      uploadQueue, 
+      setUploadQueue, 
+      isQueueMinimized, 
+      setIsQueueMinimized,
+      uploadAbortController, setUploadAbortController
     }}>
       {!isAuthLoading && children}
       {currentTrack && (

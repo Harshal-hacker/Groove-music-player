@@ -4,13 +4,13 @@ import * as Sentry from "@sentry/react";
 
 // Import the new Provider
 import { PlayerProvider } from './context/PlayerContext';
-
 import MainPlayer from './MainPlayer';
 import Login from './Login';
 import SignUp from './SignUp';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
 import Admin from './Admin';
+import GlobalUploadManager from './components/GlobalUploadManager';
 
 function App() {
   return (
@@ -30,6 +30,7 @@ function App() {
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
+          <GlobalUploadManager />
         </Sentry.ErrorBoundary>
       </Router>
     </PlayerProvider>
