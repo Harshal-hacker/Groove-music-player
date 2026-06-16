@@ -38,12 +38,11 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
 
   return (
     <aside style={{
-      /* Spotify styling: 320px width, tighter border radius */
+      /* ⚡ GROOVE BENTO STYLING: 300px width, 16px radius, bordered shell */
       width: isQueueOpen ? '320px' : '0px', opacity: isQueueOpen ? 1 : 0,
-      backgroundColor: '#121212', borderRadius: '8px', 
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1050,
-      marginLeft: isQueueOpen ? '8px' : '0px'
+      backgroundColor: '#121212', border: isQueueOpen ? '1px solid #222' : 'none',
+      borderRadius: '16px', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1050
     }}>
       <div style={{ padding: '20px 16px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#fff' }}>Queue</h3>
