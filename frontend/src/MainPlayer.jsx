@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, Suspense, lazy } from 'react';
-import { Play, SkipForward, X, PlusCircle, ListMusic, User, ArrowLeft, FolderPlus, Share2, Link, ChevronRight, Trash2, Heart, Plus, Folder, Search, Loader2 } from 'lucide-react';
+import { Play, SkipForward, X, PlusCircle, ListMusic, User, ArrowLeft, FolderPlus, Share2, Link, ChevronRight, Trash2, Heart, Plus, Folder, Search, Loader2, SettingsIcon } from 'lucide-react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
@@ -9,6 +9,7 @@ import PlayerDeck from './components/PlayerDeck';
 import { usePlayer } from './context/PlayerContext';
 import Sidebar from './components/Sidebar';
 import MainFeed from './components/MainFeed';
+import ContextMenu from './components/ContextMenu';
 
 // ⚡ OUR BRAND NEW, CLEAN COMPONENTS
 import TopHeader from './components/TopHeader';
@@ -173,6 +174,16 @@ function MainPlayer() {
     const timerId = setTimeout(() => { setDebouncedQuery(searchQuery); }, 300);
     return () => clearTimeout(timerId);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const handleGlobalContextMenu = (e) => {
+      // This prevents the default browser menu on the entire page
+      e.preventDefault();
+    };
+
+    window.addEventListener('contextmenu', handleGlobalContextMenu);
+    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
+  }, []);
 
   useEffect(() => {
     const handleGlobalShortcuts = (e) => {
@@ -456,276 +467,26 @@ function MainPlayer() {
 
       <PlayerDeck isQueueOpen={isQueueOpen} setIsQueueOpen={setIsQueueOpen} />
 
-      {/* The rest of the Context Menu and Dialog logic remains identical below... */}
-      {contextMenu && (
-        <div 
-          className={`glass-context-menu ${contextMenu.alignLeft ? 'align-left' : ''}`}
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999, background: '#121212', border: '1px solid #333' }}
-        >
-          {contextMenu.type === 'playlist' && (() => {
-            const targetPl = userPlaylists.find(pl => pl._id === contextMenu.id);
-            if (!targetPl) return null;
-
-            return (
-              <>
-                {targetPl.isReadyMade ? (
-                  <>
-                    {(() => {
-                      const isFollowed = targetPl.followers?.includes(currentUser?._id);
-                      return (
-                        <div className="context-item" onClick={async () => {
-                          setContextMenu(null);
-                          const userId = currentUser?._id;
-                          try {
-                            const res = await fetch(`${API_BASE_URL}/api/playlists/${contextMenu.id}/follow`, { 
-                              method: 'PATCH', 
-                              headers: { 'Content-Type': 'application/json' }, 
-                              body: JSON.stringify({ userId }),
-                              credentials: 'include'
-                            });
-                            if (res.ok) {
-                              const updatedPlaylist = await res.json();
-                              setUserPlaylists(prev => prev.map(p => p._id === contextMenu.id ? updatedPlaylist : p));
-                              setToast({ message: isFollowed ? "Removed collection from your library." : "Added collection to your library!", type: 'success' });
-                              setTimeout(() => setToast(null), 3000);
-                            }
-                          } catch (err) { console.error(err); }
-                        }}>
-                          <div className="item-content">
-                            {isFollowed ? <X size={16} color="#10b981" /> : <PlusCircle size={16} />}
-                            <span style={{ color: isFollowed ? '#10b981' : '#fff' }}>{isFollowed ? 'Remove from Your Library' : 'Add to Your Library'}</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    <div className="context-item" onClick={() => { 
-                      if (targetPl && targetPl.songIds && targetPl.songIds.length > 0) {
-                        setQueue(prev => [...prev, ...targetPl.songIds]);
-                        setToast({ message: `Added ${targetPl.songIds.length} tracks to Queue!`, type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } else {
-                        setToast({ message: `This playlist is empty!`, type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                      setContextMenu(null); 
-                    }}>
-                      <div className="item-content"><ListMusic size={16} /> <span>Add to queue</span></div>
-                    </div>
-
-                    <div className="context-item submenu-parent">
-                      <div className="item-content"><FolderPlus size={16} /> <span>Add to folder</span></div>
-                      <ChevronRight size={14} opacity={0.5} />
-                      <div className="glass-submenu" style={{background: '#121212', border: '1px solid #333'}}>
-                        <div className="context-item"><span style={{fontSize:'10px', color:'#888', fontWeight:'bold'}}>NO FOLDERS FOUND</span></div>
-                      </div>
-                    </div>
-
-                    <div className="context-item submenu-parent">
-                      <div className="item-content"><Share2 size={16} /> <span>Share</span></div>
-                      <ChevronRight size={14} opacity={0.5} />
-                      <div className="glass-submenu" style={{background: '#121212', border: '1px solid #333'}}>
-                        <div className="context-item" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}?playlist=${contextMenu.id}`); setContextMenu(null); }}>
-                          <Link size={14} /> <span>Copy link to playlist</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {isAdmin && contextMenu.source === 'home' && (
-                      <>
-                        <div className="context-divider" style={{background: '#333'}} />
-                        <div className="context-item delete-text" onClick={() => { deletePlaylist(contextMenu.id); setContextMenu(null); }}>
-                          <div className="item-content"><Trash2 size={16} color="#ef4444" /> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Delete Playlist</span></div>
-                        </div>
-                        <div 
-                          className="context-item" style={{ color: '#10b981' }}
-                          onClick={async () => {
-                            const userId = currentUser?._id;
-                            const name = prompt("Enter a name for this Playlist:");
-                            if (!name) return;
-                            const category = prompt("Enter Category Group:", "Trending Now");
-                            setContextMenu(null);
-                            if (!category) return;
-
-                            try {
-                              const res = await fetch(`${API_BASE_URL}/api/playlists/curated`, { 
-                                method: 'POST', 
-                                headers: { 'Content-Type': 'application/json' }, 
-                                body: JSON.stringify({ name, userId, category: category.trim() }),
-                                credentials: 'include'
-                              });
-                              if (res.ok) {
-                                const newCuratedDeck = await res.json();
-                                setUserPlaylists(prev => [...prev, newCuratedDeck]);
-                                setToast({ message: `"${name}" added to "${category}" shelf!`, type: 'success' });
-                                setTimeout(() => setToast(null), 3000);
-                              }
-                            } catch (err) { console.error(err); }
-                          }}
-                        >
-                          <div className="item-content"><PlusCircle size={16} color="#10b981" /> <span>Create Playlist</span></div>
-                        </div>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="context-item" onClick={() => { 
-                      if (targetPl && targetPl.songIds && targetPl.songIds.length > 0) {
-                        setQueue(prev => [...prev, ...targetPl.songIds]);
-                        setToast({ message: `Added ${targetPl.songIds.length} tracks to Queue!`, type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      } else {
-                        setToast({ message: `This playlist is empty!`, type: 'error' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
-                      setContextMenu(null); 
-                    }}>
-                      <div className="item-content"><ListMusic size={16} /> <span>Add to queue</span></div>
-                    </div>
-
-                    <div className="context-item" onClick={() => { setTempName(targetPl.name || ""); setSelectedPlaylist(contextMenu.id); setIsEditingName(true); setContextMenu(null); }}>
-                      <div className="item-content"><SettingsIcon size={16} /> <span>Edit details</span></div>
-                    </div>
-
-                    <div className="context-item delete-text" onClick={() => { deletePlaylist(contextMenu.id); setContextMenu(null); }}>
-                      <div className="item-content"><Trash2 size={16} color="#ef4444" /> <span>Delete</span></div>
-                    </div>
-
-                    <div className="context-divider" style={{background: '#333'}} />
-
-                    <div className="context-item submenu-parent">
-                      <div className="item-content"><Share2 size={16} /> <span>Share</span></div>
-                      <ChevronRight size={14} opacity={0.5} />
-                      <div className="glass-submenu" style={{background: '#121212', border: '1px solid #333'}}>
-                        <div className="context-item" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}?playlist=${contextMenu.id}`); setContextMenu(null); }}>
-                          <Link size={14} /> <span>Copy link to playlist</span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-                {contextMenu.source === 'sidebar' && (
-                  <>
-                    <div className="context-divider" style={{background: '#333'}} />
-                    <div className="context-item" onClick={() => { handleCreatePlaylistInline(); setContextMenu(null); }}>
-                      <div className="item-content"><Plus size={16} /> <span>Create playlist</span></div>
-                    </div>
-                    <div className="context-item" onClick={() => setContextMenu(null)}>
-                      <div className="item-content"><Folder size={16} /> <span>Create folder</span></div>
-                    </div>
-                  </>
-                )}
-              </>
-            );
-          })()}
-
-          {contextMenu.type === 'song' && (
-            <>
-              <div className="context-item" onClick={() => { 
-                const songToAdd = playlist.find(s => s._id === contextMenu.id);
-                if (songToAdd) setQueue(prev => [songToAdd, ...prev]);
-                setContextMenu(null);
-              }}>
-                <div className="item-content"><SkipForward size={16} /> <span>Play Next</span></div>
-              </div>
-
-              <div className="context-item" onClick={() => { 
-                const songToAdd = playlist.find(s => s._id === contextMenu.id);
-                if (songToAdd) setQueue(prev => [...prev, songToAdd]);
-                setContextMenu(null);
-              }}>
-                <div className="item-content"><Plus size={16} /> <span>Add to Queue</span></div>
-              </div>
-
-              <div className="context-divider" style={{background: '#333'}} />
-
-              <div className="context-item submenu-parent">
-                <div className="item-content"><FolderPlus size={16} /> <span>Add to Playlist</span></div>
-                <ChevronRight size={14} opacity={0.5} />
-                <div className="glass-submenu" style={{ maxHeight: '200px', overflowY: 'auto', background: '#121212', border: '1px solid #333' }}>
-                  <div style={{ padding: '6px 12px', fontSize: '10px', color: '#64748b', fontWeight: '800', letterSpacing: '1px' }}>YOUR PLAYLISTS</div>
-                  {userPlaylists.filter(pl => !pl.isReadyMade).map(pl => (
-                    <div key={pl._id} className="context-item" onClick={() => handleAddToPlaylist(contextMenu.id, pl._id)}>
-                      <span>{pl.name}</span>
-                    </div>
-                  ))}
-
-                  {isAdmin && (
-                    <>
-                      <div style={{ height: '1px', background: '#333', margin: '4px 0' }} />
-                      <div style={{ padding: '6px 12px', fontSize: '10px', color: '#10b981', fontWeight: '800', letterSpacing: '1px' }}>CURATED SHELVES</div>
-                      {userPlaylists.filter(pl => pl.isReadyMade).map(pl => (
-                        <div key={pl._id} className="context-item" onClick={() => handleAddToPlaylist(contextMenu.id, pl._id)}>
-                          <span style={{ color: '#34d399' }}>{pl.name}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="context-item" onClick={(e) => { toggleLike(contextMenu.id, e); setContextMenu(null); }}>
-                <div className="item-content">
-                  <Heart size={16} fill={userData?.likedSongs?.includes(contextMenu.id) ? "#10b981" : "none"} color="#10b981" /> 
-                  <span>{userData?.likedSongs?.includes(contextMenu.id) ? 'Remove from Likes' : 'Save to Liked Songs'}</span>
-                </div>
-              </div>
-
-              {selectedPlaylist && (() => {
-                const activePlObj = userPlaylists.find(p => p._id === selectedPlaylist);
-                if (!activePlObj) return null;
-                const canModifyTracks = !activePlObj.isReadyMade || isAdmin;
-                if (canModifyTracks) {
-                  return (
-                    <div className="context-item delete-text" onClick={() => handleRemoveFromPlaylist(contextMenu.id, selectedPlaylist)}>
-                      <div className="item-content"><Trash2 size={16} color="#10b981" /> <span>Remove from this playlist</span></div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              <div className="context-divider" style={{background: '#333'}} />
-
-              <div className="context-item" onClick={() => setContextMenu(null)}>
-                <div className="item-content"><User size={16} /> <span>Go to Artist</span></div>
-              </div>
-
-              <div className="context-item submenu-parent">
-                <div className="item-content"><Share2 size={16} /> <span>Share</span></div>
-                <ChevronRight size={14} opacity={0.5} />
-                <div className="glass-submenu" style={{background: '#121212', border: '1px solid #333'}}>
-                  <div className="context-item" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}?track=${contextMenu.id}`); setContextMenu(null); }}>
-                    <Link size={14} /> <span>Copy Link</span>
-                  </div>
-                </div>
-              </div>
-
-              {isAdmin && activeCategory === 'All' && !selectedPlaylist && (
-                <>
-                  <div className="context-divider" style={{background: '#333'}} />
-                  <div className="context-item delete-text" onClick={() => { handleDelete(contextMenu.id); setContextMenu(null); }}>
-                    <div className="item-content"><Trash2 size={16} color="#ef4444" /> <span style={{ color: '#ef4444' }}>Delete Permanently</span></div>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {contextMenu.type === 'sidebar-empty' && (
-            <>
-              <div className="context-item" onClick={() => { handleCreatePlaylistInline(); setContextMenu(null); }}>
-                <div className="item-content"><Plus size={16} /> <span>Create playlist</span></div>
-              </div>
-              <div className="context-item" onClick={() => setContextMenu(null)}>
-                <div className="item-content"><Folder size={16} /> <span>Create folder</span></div>
-              </div>
-            </>
-          )}
-
-        </div>
-      )}
+      {/* ⚡ THE EXTRACTED CONTEXT MENU */}
+      <ContextMenu 
+        menu={contextMenu} 
+        closeMenu={() => setContextMenu(null)} 
+        userPlaylists={userPlaylists} 
+        setUserPlaylists={setUserPlaylists}
+        currentUser={currentUser}
+        userData={userData}
+        setToast={setToast}
+        handleAddToPlaylist={handleAddToPlaylist}
+        handleRemoveFromPlaylist={handleRemoveFromPlaylist}
+        deletePlaylist={deletePlaylist}
+        handleCreatePlaylistInline={handleCreatePlaylistInline}
+        setSelectedPlaylist={setSelectedPlaylist}
+        setIsEditingName={setIsEditingName}
+        setTempName={setTempName}
+        activeCategory={activeCategory}
+        handleDelete={handleDelete}
+        toggleLike={toggleLike}
+      />
 
       {confirmDialog.isOpen && (
         <div style={{
