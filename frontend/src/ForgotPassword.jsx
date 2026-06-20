@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Headphones, Loader2, ShieldAlert, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Headphones, Loader2, ShieldAlert, AlertCircle, Eye, EyeOff } from 'lucide-react'; // ⚡ ADDED EYE ICONS
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './config';
 
-function ForgotPassword({ onBackToLogin }) {
+function ForgotPassword() { // ⚡ REMOVED THE BROKEN PROP
   const navigate = useNavigate();
   const [step, setStep] = useState(1); 
   const [email, setEmail] = useState('');
@@ -11,6 +11,9 @@ function ForgotPassword({ onBackToLogin }) {
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tokenError, setTokenError] = useState('');
+  
+  // ⚡ ADDED: Password Visibility State
+  const [showPassword, setShowPassword] = useState(false);
 
   // --- 1. Send the email code ---
   const handleSendCode = async (e) => {
@@ -56,7 +59,7 @@ function ForgotPassword({ onBackToLogin }) {
       
       if (response.ok) {
         alert("Password updated successfully! You can now log in.");
-        navigate('/login'); // Fixed 'Maps' to 'navigate'
+        navigate('/login'); 
       } else {
         setTokenError(data.message || "Invalid or expired code.");
       }
@@ -72,7 +75,7 @@ function ForgotPassword({ onBackToLogin }) {
       
       {/* Solid Bento Back Button */}
       <button 
-        onClick={step === 2 ? () => { setStep(1); setTokenError(''); } : onBackToLogin} 
+        onClick={step === 2 ? () => { setStep(1); setTokenError(''); } : () => navigate('/login')} // ⚡ FIXED ROUTING HERE
         style={{ 
           position: 'absolute', top: '30px', left: '30px', zIndex: 100, 
           background: '#121212', border: '1px solid #222', 
@@ -182,15 +185,35 @@ function ForgotPassword({ onBackToLogin }) {
                   )}
                 </div>
 
+                {/* ⚡ UPDATED: Password Field with Toggle */}
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>New Password</label>
-                  <input 
-                    type="password" placeholder="At least 6 characters" required minLength="6"
-                    value={newPassword} onChange={(e) => setNewPassword(e.target.value)} 
-                    style={{ width: '100%', padding: '16px 20px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' }} 
-                    onFocus={(e) => e.target.style.borderColor = '#10b981'}
-                    onBlur={(e) => e.target.style.borderColor = '#333'}
-                  />
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      placeholder="At least 6 characters" required minLength="6"
+                      value={newPassword} onChange={(e) => setNewPassword(e.target.value)} 
+                      style={{ 
+                        width: '100%', padding: '16px 50px 16px 20px', 
+                        background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', 
+                        color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' 
+                      }} 
+                      onFocus={(e) => e.target.style.borderColor = '#10b981'}
+                      onBlur={(e) => e.target.style.borderColor = '#333'}
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{ 
+                        position: 'absolute', right: '16px', background: 'transparent', border: 'none', 
+                        color: '#64748b', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', transition: '0.2s' 
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
+                      onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <button type="submit" disabled={isSubmitting} style={{ padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', fontWeight: '900', cursor: 'pointer', fontSize: '15px', marginTop: '10px', transition: '0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
@@ -201,7 +224,7 @@ function ForgotPassword({ onBackToLogin }) {
           )}
 
           <p style={{ marginTop: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: '600' }}>
-            Remembered your password? <span onClick={onBackToLogin} style={{ color: '#fff', textDecoration: 'none', borderBottom: '1px solid #10b981', cursor: 'pointer', fontWeight: '800', marginLeft: '5px' }}>Log in</span>
+            Remembered your password? <span onClick={() => navigate('/login')} style={{ color: '#fff', textDecoration: 'none', borderBottom: '1px solid #10b981', cursor: 'pointer', fontWeight: '800', marginLeft: '5px' }}>Log in</span> {/* ⚡ FIXED ROUTING HERE */}
           </p>
         </div>
       </div>

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Globe, Apple, ArrowLeft, Headphones, Loader2, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, Apple, ArrowLeft, Headphones, Loader2, Calendar, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayer } from './context/PlayerContext';
 import { API_BASE_URL } from './config';
+import { useGoogleLogin } from '@react-oauth/google';
 
 function SignUp({ onBackToLogin }) {
   const navigate = useNavigate();
@@ -10,11 +11,16 @@ function SignUp({ onBackToLogin }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setCurrentUser } = usePlayer();
   
-  // Custom Gender Dropdown State
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // ⚡ NEW: Real-time Email Validation States
+  const [emailError, setEmailError] = useState('');
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [emailIsValid, setEmailIsValid] = useState(false);
+  
   const [showGenderMenu, setShowGenderMenu] = useState(false);
   const genderOptions = ["Male", "Female", "Non-binary", "Prefer not to say"];
 
-  // Calendar State
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear() - 18); 
@@ -33,17 +39,73 @@ function SignUp({ onBackToLogin }) {
     gender: 'Prefer not to say'
   });
 
+  // ⚡ THE REAL-TIME ENGINE: Checks DB when user stops typing for 800ms
+  useEffect(() => {
+    const checkEmailDatabase = async () => {
+      // Basic regex check before hitting the server
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        setEmailError('Please enter a valid email format.');
+        setEmailIsValid(false);
+        setIsCheckingEmail(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/check-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formData.email })
+        });
+        const data = await response.json();
+
+        if (data.exists) {
+          setEmailError('This email is already registered to an account.');
+          setEmailIsValid(false);
+        } else {
+          setEmailError('');
+          setEmailIsValid(true);
+        }
+      } catch (err) {
+        console.error("Email check failed", err);
+      } finally {
+        setIsCheckingEmail(false);
+      }
+    };
+
+    if (formData.email.length > 0) {
+      setIsCheckingEmail(true);
+      setEmailError('');
+      setEmailIsValid(false);
+      
+      const delayDebounceFn = setTimeout(() => {
+        checkEmailDatabase();
+      }, 800); // Waits 800ms after last keystroke
+
+      return () => clearTimeout(delayDebounceFn);
+    } else {
+      setEmailError('');
+      setEmailIsValid(false);
+      setIsCheckingEmail(false);
+    }
+  }, [formData.email]);
+
   const handleNext = (e) => {
     e.preventDefault();
-    if (formData.email && formData.password.length >= 6) {
+    if (emailIsValid && formData.password.length >= 6) {
       setStep(2);
-    } else {
-      alert("Please enter a valid email and a password of at least 6 characters.");
+    } else if (formData.password.length < 6) {
+      alert("Password must be at least 6 characters.");
     }
   };
 
   const handleSignUp = async (e) => {
     e.preventDefault();
+    if (!formData.dob) {
+      alert("Please select your Date of Birth.");
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -51,22 +113,17 @@ function SignUp({ onBackToLogin }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
-        credentials: 'include' // <-- SECURED: Accepts the HTTP-only cookie
+        credentials: 'include' 
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        // 1. NO MORE LOCAL STORAGE! 
-        
-        // 2. Set the global user state instead:
         setCurrentUser({ 
           _id: data.userId, 
           email: formData.email, 
           role: data.role 
         });
-        
-        // 3. Send to player on success
         navigate('/'); 
       } else {
         alert(data.message || "Failed to create account.");
@@ -85,6 +142,30 @@ function SignUp({ onBackToLogin }) {
     setFormData({ ...formData, dob: formattedDate });
     setShowDatePicker(false);
   };
+
+  const loginWithGoogle = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        // Send the Google token to the new Express route we just built
+        const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: tokenResponse.access_token }),
+          credentials: 'include'
+        });
+
+        if (res.ok) {
+          const userData = await res.json();
+          setCurrentUser(userData);
+          navigate('/'); // Boom! Logged into Groove via Google.
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+  });
+
+  const isStep2Complete = formData.profileName.trim() !== '' && formData.dob !== '';
 
   return (
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
@@ -139,7 +220,18 @@ function SignUp({ onBackToLogin }) {
           {step === 1 ? (
             <div style={{ animation: 'ultraFade 0.4s ease' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: '0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#1a1a1a'} onMouseOut={(e) => e.currentTarget.style.background = '#0a0a0a'}>
+                <button 
+                  onClick={() => loginWithGoogle()} // ⚡ Triggers the Google Pop-up
+                  type="button"
+                  style={{ 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', 
+                    width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', 
+                    borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', 
+                    cursor: 'pointer', transition: '0.2s' 
+                  }} 
+                  onMouseOver={(e) => e.currentTarget.style.background = '#1a1a1a'} 
+                  onMouseOut={(e) => e.currentTarget.style.background = '#0a0a0a'}
+                >
                   <Globe size={18} /> Continue with Google
                 </button>
                 <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: '0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = '#1a1a1a'} onMouseOut={(e) => e.currentTarget.style.background = '#0a0a0a'}>
@@ -156,23 +248,75 @@ function SignUp({ onBackToLogin }) {
               <form onSubmit={handleNext} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>Email</label>
-                  <input 
-                    type="email" placeholder="name@domain.com" required 
-                    value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                    style={{ width: '100%', padding: '16px 20px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' }} 
-                  />
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="email" placeholder="name@domain.com" required 
+                      value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      style={{ 
+                        width: '100%', padding: '16px 50px 16px 20px', 
+                        background: '#0a0a0a', color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease',
+                        border: emailError ? '1px solid #ef4444' : (emailIsValid ? '1px solid #10b981' : '1px solid #333'), 
+                        borderRadius: '12px', 
+                      }} 
+                    />
+                    
+                    {/* ⚡ STATUS INDICATORS FOR EMAIL */}
+                    <div style={{ position: 'absolute', right: '16px', display: 'flex', alignItems: 'center' }}>
+                      {isCheckingEmail && <Loader2 size={18} color="#64748b" className="spinner" />}
+                      {!isCheckingEmail && emailIsValid && <CheckCircle2 size={18} color="#10b981" />}
+                      {!isCheckingEmail && emailError && <AlertCircle size={18} color="#ef4444" />}
+                    </div>
+                  </div>
+                  
+                  {/* ERROR MESSAGE DISPLAY */}
+                  {emailError && !isCheckingEmail && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontSize: '12px', marginTop: '8px', fontWeight: '600', animation: 'ultraFade 0.3s ease' }}>
+                      {emailError}
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>Password</label>
-                  <input 
-                    type="password" placeholder="At least 6 characters" required minLength="6"
-                    value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
-                    style={{ width: '100%', padding: '16px 20px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' }} 
-                  />
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      placeholder="At least 6 characters" required minLength="6"
+                      value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
+                      style={{ 
+                        width: '100%', padding: '16px 50px 16px 20px', 
+                        background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', 
+                        color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' 
+                      }} 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{ 
+                        position: 'absolute', right: '16px', background: 'transparent', border: 'none', 
+                        color: '#64748b', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', transition: '0.2s' 
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
+                      onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
-                <button type="submit" style={{ padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', fontWeight: '900', cursor: 'pointer', fontSize: '15px', marginTop: '10px', transition: '0.3s' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                {/* ⚡ NEXT BUTTON DISABLED IF EMAIL IS INVALID */}
+                <button 
+                  type="submit" 
+                  disabled={!emailIsValid || formData.password.length < 6 || isCheckingEmail}
+                  style={{ 
+                    padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', 
+                    fontWeight: '900', fontSize: '15px', marginTop: '10px', transition: '0.3s',
+                    opacity: (!emailIsValid || formData.password.length < 6 || isCheckingEmail) ? 0.5 : 1,
+                    cursor: (!emailIsValid || formData.password.length < 6 || isCheckingEmail) ? 'not-allowed' : 'pointer'
+                  }} 
+                  onMouseOver={(e) => { if (emailIsValid && formData.password.length >= 6 && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(-2px)' }} 
+                  onMouseOut={(e) => { if (emailIsValid && formData.password.length >= 6 && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(0)' }}
+                >
                   Next
                 </button>
               </form>
@@ -195,13 +339,13 @@ function SignUp({ onBackToLogin }) {
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   style={{ 
                     width: '100%', padding: '16px 20px', background: '#0a0a0a', 
-                    border: showDatePicker ? '1px solid #10b981' : '1px solid #333', 
+                    border: showDatePicker ? '1px solid #10b981' : (formData.dob ? '1px solid #333' : '1px dashed #64748b'), 
                     borderRadius: '12px', color: formData.dob ? '#fff' : '#64748b', fontSize: '14px', cursor: 'pointer', 
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}
                 >
-                  {formData.dob ? formData.dob : "mm/dd/yyyy"}
-                  <Calendar size={18} color="#64748b" />
+                  {formData.dob ? formData.dob : "Select your birth date"}
+                  <Calendar size={18} color={formData.dob ? "#10b981" : "#64748b"} />
                 </div>
                 {showDatePicker && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', marginTop: '8px', background: '#121212', border: '1px solid #333', borderRadius: '12px', padding: '20px', zIndex: 10 }}>
@@ -216,7 +360,7 @@ function SignUp({ onBackToLogin }) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' }}>
                       {Array.from({ length: firstDay }).map((_, i) => <div key={i} />)}
                       {Array.from({ length: daysInMonth }).map((_, i) => (
-                        <div key={i+1} onClick={() => handleDateSelect(i+1)} style={{ padding: '5px', textAlign: 'center', cursor: 'pointer', background: formData.dob === `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(i+1).padStart(2, '0')}` ? '#10b981' : 'transparent' }}>{i+1}</div>
+                        <div key={i+1} onClick={() => handleDateSelect(i+1)} style={{ padding: '5px', textAlign: 'center', cursor: 'pointer', background: formData.dob === `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(i+1).padStart(2, '0')}` ? '#10b981' : 'transparent', borderRadius: '4px' }}>{i+1}</div>
                       ))}
                     </div>
                   </div>
@@ -230,18 +374,38 @@ function SignUp({ onBackToLogin }) {
                   style={{ width: '100%', padding: '16px 20px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   {formData.gender}
-                  <span>▼</span>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>▼</span>
                 </div>
                 {showGenderMenu && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#121212', border: '1px solid #333', borderRadius: '12px', zIndex: 10 }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', marginTop: '8px', background: '#121212', border: '1px solid #333', borderRadius: '12px', zIndex: 10, overflow: 'hidden' }}>
                     {genderOptions.map((option) => (
-                      <div key={option} onClick={() => { setFormData({ ...formData, gender: option }); setShowGenderMenu(false); }} style={{ padding: '14px 20px', cursor: 'pointer' }}>{option}</div>
+                      <div 
+                        key={option} 
+                        onClick={() => { setFormData({ ...formData, gender: option }); setShowGenderMenu(false); }} 
+                        style={{ padding: '14px 20px', cursor: 'pointer', transition: '0.2s', backgroundColor: 'transparent' }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        {option}
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <button type="submit" disabled={isSubmitting} style={{ padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', fontWeight: '900', cursor: 'pointer', fontSize: '15px', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button 
+                type="submit" 
+                disabled={isSubmitting || !isStep2Complete} 
+                style={{ 
+                  padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', 
+                  fontWeight: '900', fontSize: '15px', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                  transition: '0.3s', 
+                  opacity: isStep2Complete ? 1 : 0.5, 
+                  cursor: isStep2Complete ? 'pointer' : 'not-allowed' 
+                }} 
+                onMouseOver={(e) => { if(!isSubmitting && isStep2Complete) e.currentTarget.style.transform = 'translateY(-2px)'}} 
+                onMouseOut={(e) => { if(!isSubmitting && isStep2Complete) e.currentTarget.style.transform = 'translateY(0)'}}
+              >
                 {isSubmitting ? <Loader2 className="spinner" size={20} /> : "Sign Up"}
               </button>
             </form>

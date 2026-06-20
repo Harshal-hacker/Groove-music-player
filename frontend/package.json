@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
+    "@react-oauth/google": "^0.13.5",
     "@sentry/react": "^10.57.0",
     "axios": "^1.16.1",
     "framer-motion": "^12.40.0",

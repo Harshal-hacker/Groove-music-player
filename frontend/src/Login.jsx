@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import { Globe, Apple, ArrowLeft, Headphones, Loader2 } from 'lucide-react';
+import { Globe, Apple, ArrowLeft, Headphones, Loader2, Eye, EyeOff } from 'lucide-react'; // ⚡ ADDED EYE ICONS
 import { useNavigate } from 'react-router-dom';
 import { usePlayer } from './context/PlayerContext';
 import { API_BASE_URL } from './config';
+import { useGoogleLogin } from '@react-oauth/google';
 
 function Login() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // ⚡ ADDED: Password Visibility State
+  const [showPassword, setShowPassword] = useState(false);
+  
   const { setCurrentUser } = usePlayer();
 
   const handleLogin = async (e) => {
@@ -53,6 +58,28 @@ function Login() {
       setIsSubmitting(false);
     }
   };
+
+  const loginWithGoogle = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        // Send the Google token to the new Express route we just built
+        const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: tokenResponse.access_token }),
+          credentials: 'include'
+        });
+
+        if (res.ok) {
+          const userData = await res.json();
+          setCurrentUser(userData);
+          navigate('/'); // Boom! Logged into Groove via Google.
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+  });
   
   return (
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
@@ -98,7 +125,18 @@ function Login() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: '0.2s' }}>
+            <button 
+              onClick={() => loginWithGoogle()} // ⚡ Triggers the Google Pop-up
+              type="button"
+              style={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', 
+                width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', 
+                borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', 
+                cursor: 'pointer', transition: '0.2s' 
+              }} 
+              onMouseOver={(e) => e.currentTarget.style.background = '#1a1a1a'} 
+              onMouseOut={(e) => e.currentTarget.style.background = '#0a0a0a'}
+            >
               <Globe size={18} /> Continue with Google
             </button>
             <button style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', width: '100%', padding: '16px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '14px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: '0.2s' }}>
@@ -122,13 +160,34 @@ function Login() {
               />
             </div>
 
+            {/* ⚡ UPDATED: Password Field with Toggle */}
             <div>
               <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>Password</label>
-              <input 
-                type="password" placeholder="Password" required value={formData.password} 
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
-                style={{ width: '100%', padding: '16px 20px', background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' }} 
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="Password" required value={formData.password} 
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
+                  style={{ 
+                    width: '100%', padding: '16px 50px 16px 20px', // Extra right padding for the icon
+                    background: '#0a0a0a', border: '1px solid #333', borderRadius: '12px', 
+                    color: '#fff', outline: 'none', fontSize: '14px', transition: '0.3s ease' 
+                  }} 
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ 
+                    position: 'absolute', right: '16px', background: 'transparent', border: 'none', 
+                    color: '#64748b', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', transition: '0.2s' 
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
+                  onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              
               <div style={{ marginTop: '8px', textAlign: 'right' }}>
                 <span 
                   onClick={() => navigate('/forgot-password')}
