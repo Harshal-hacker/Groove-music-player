@@ -7,13 +7,13 @@ import { useGoogleLogin } from '@react-oauth/google';
 
 function SignUp({ onBackToLogin }) {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(1); // Now goes from 1 to 3
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setCurrentUser } = usePlayer();
   
   const [showPassword, setShowPassword] = useState(false);
   
-  // ⚡ NEW: Real-time Email Validation States
+  // Real-time Email Validation States
   const [emailError, setEmailError] = useState('');
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [emailIsValid, setEmailIsValid] = useState(false);
@@ -39,10 +39,9 @@ function SignUp({ onBackToLogin }) {
     gender: 'Prefer not to say'
   });
 
-  // ⚡ THE REAL-TIME ENGINE: Checks DB when user stops typing for 800ms
+  // THE REAL-TIME ENGINE: Checks DB when user stops typing for 800ms
   useEffect(() => {
     const checkEmailDatabase = async () => {
-      // Basic regex check before hitting the server
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
         setEmailError('Please enter a valid email format.');
@@ -80,7 +79,7 @@ function SignUp({ onBackToLogin }) {
       
       const delayDebounceFn = setTimeout(() => {
         checkEmailDatabase();
-      }, 800); // Waits 800ms after last keystroke
+      }, 800);
 
       return () => clearTimeout(delayDebounceFn);
     } else {
@@ -90,11 +89,17 @@ function SignUp({ onBackToLogin }) {
     }
   }, [formData.email]);
 
-  const handleNext = (e) => {
+  // Step Handlers
+  const handleEmailNext = (e) => {
     e.preventDefault();
-    if (emailIsValid && formData.password.length >= 6) {
-      setStep(2);
-    } else if (formData.password.length < 6) {
+    if (emailIsValid) setStep(2);
+  };
+
+  const handlePasswordNext = (e) => {
+    e.preventDefault();
+    if (formData.password.length >= 6) {
+      setStep(3);
+    } else {
       alert("Password must be at least 6 characters.");
     }
   };
@@ -122,7 +127,8 @@ function SignUp({ onBackToLogin }) {
         setCurrentUser({ 
           _id: data.userId, 
           email: formData.email, 
-          role: data.role 
+          role: data.role,
+          profileName: formData.profileName // ⚡ ADD THIS LINE
         });
         navigate('/'); 
       } else {
@@ -146,7 +152,6 @@ function SignUp({ onBackToLogin }) {
   const loginWithGoogle = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       try {
-        // Send the Google token to the new Express route we just built
         const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -157,7 +162,7 @@ function SignUp({ onBackToLogin }) {
         if (res.ok) {
           const userData = await res.json();
           setCurrentUser(userData);
-          navigate('/'); // Boom! Logged into Groove via Google.
+          navigate('/'); 
         }
       } catch (err) {
         console.error(err);
@@ -165,13 +170,13 @@ function SignUp({ onBackToLogin }) {
     },
   });
 
-  const isStep2Complete = formData.profileName.trim() !== '' && formData.dob !== '';
+  const isStep3Complete = formData.profileName.trim() !== '' && formData.dob !== '';
 
   return (
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
       
       <button 
-        onClick={() => step === 2 ? setStep(1) : navigate('/')} 
+        onClick={() => step === 3 ? setStep(2) : step === 2 ? setStep(1) : navigate('/')} 
         style={{ 
           position: 'absolute', top: '30px', left: '30px', zIndex: 100, 
           background: '#121212', border: '1px solid #222', 
@@ -182,7 +187,7 @@ function SignUp({ onBackToLogin }) {
         onMouseOver={(e) => e.currentTarget.style.background = '#1a1a1a'}
         onMouseOut={(e) => e.currentTarget.style.background = '#121212'}
       >
-        <ArrowLeft size={18} /> <span className="mobile-hide">{step === 2 ? "GO BACK" : "BACK TO GROOVE"}</span>
+        <ArrowLeft size={18} /> <span className="mobile-hide">{step > 1 ? "GO BACK" : "BACK TO GROOVE"}</span>
       </button>
 
       <div className="auth-visual-side" style={{ flex: 1.2, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end', padding: '60px' }}>
@@ -193,7 +198,7 @@ function SignUp({ onBackToLogin }) {
             <span style={{ fontSize: '24px', fontWeight: '900', letterSpacing: '2px' }}>GROOVE</span>
           </div>
           <h2 style={{ fontSize: '48px', fontWeight: '900', lineHeight: '1.1', maxWidth: '450px' }}>
-            {step === 1 ? "The pulse of the future is here." : "Tell us a bit about yourself."}
+            {step === 1 ? "The pulse of the future is here." : step === 2 ? "Keep your Groove secure." : "Tell us a bit about yourself."}
           </h2>
         </div>
       </div>
@@ -208,20 +213,23 @@ function SignUp({ onBackToLogin }) {
           
           <div style={{ marginBottom: '35px' }}>
             <h1 style={{ fontSize: '32px', fontWeight: '900', margin: '0 0 15px 0' }}>
-              {step === 1 ? "Sign up" : "Create Profile"}
+              {step === 1 ? "Sign up" : step === 2 ? "Create Password" : "Create Profile"}
             </h1>
             
+            {/* ⚡ UPDATED: 3-Segment Progress Bar */}
             <div style={{ display: 'flex', gap: '8px' }}>
                <div style={{ height: '4px', flex: 1, background: '#10b981', borderRadius: '4px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)' }}></div>
-               <div style={{ height: '4px', flex: 1, background: step === 2 ? '#10b981' : '#222', borderRadius: '4px', transition: 'all 0.4s ease', boxShadow: step === 2 ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none' }}></div>
+               <div style={{ height: '4px', flex: 1, background: step >= 2 ? '#10b981' : '#222', borderRadius: '4px', transition: 'all 0.4s ease', boxShadow: step >= 2 ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none' }}></div>
+               <div style={{ height: '4px', flex: 1, background: step === 3 ? '#10b981' : '#222', borderRadius: '4px', transition: 'all 0.4s ease', boxShadow: step === 3 ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none' }}></div>
             </div>
           </div>
 
-          {step === 1 ? (
+          {/* ================= STEP 1: EMAIL ================= */}
+          {step === 1 && (
             <div style={{ animation: 'ultraFade 0.4s ease' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <button 
-                  onClick={() => loginWithGoogle()} // ⚡ Triggers the Google Pop-up
+                  onClick={() => loginWithGoogle()} 
                   type="button"
                   style={{ 
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', 
@@ -245,7 +253,7 @@ function SignUp({ onBackToLogin }) {
                 <div style={{ flex: 1, height: '1px', background: '#333' }} />
               </div>
 
-              <form onSubmit={handleNext} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <form onSubmit={handleEmailNext} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>Email</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -260,7 +268,6 @@ function SignUp({ onBackToLogin }) {
                       }} 
                     />
                     
-                    {/* ⚡ STATUS INDICATORS FOR EMAIL */}
                     <div style={{ position: 'absolute', right: '16px', display: 'flex', alignItems: 'center' }}>
                       {isCheckingEmail && <Loader2 size={18} color="#64748b" className="spinner" />}
                       {!isCheckingEmail && emailIsValid && <CheckCircle2 size={18} color="#10b981" />}
@@ -268,7 +275,6 @@ function SignUp({ onBackToLogin }) {
                     </div>
                   </div>
                   
-                  {/* ERROR MESSAGE DISPLAY */}
                   {emailError && !isCheckingEmail && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontSize: '12px', marginTop: '8px', fontWeight: '600', animation: 'ultraFade 0.3s ease' }}>
                       {emailError}
@@ -276,6 +282,28 @@ function SignUp({ onBackToLogin }) {
                   )}
                 </div>
 
+                <button 
+                  type="submit" 
+                  disabled={!emailIsValid || isCheckingEmail}
+                  style={{ 
+                    padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', 
+                    fontWeight: '900', fontSize: '15px', marginTop: '10px', transition: '0.3s',
+                    opacity: (!emailIsValid || isCheckingEmail) ? 0.5 : 1,
+                    cursor: (!emailIsValid || isCheckingEmail) ? 'not-allowed' : 'pointer'
+                  }} 
+                  onMouseOver={(e) => { if (emailIsValid && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(-2px)' }} 
+                  onMouseOut={(e) => { if (emailIsValid && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(0)' }}
+                >
+                  Next
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* ================= STEP 2: PASSWORD ================= */}
+          {step === 2 && (
+            <div style={{ animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+              <form onSubmit={handlePasswordNext} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: '800', marginBottom: '8px', display: 'block', color: '#94a3b8' }}>Password</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -304,24 +332,26 @@ function SignUp({ onBackToLogin }) {
                   </div>
                 </div>
 
-                {/* ⚡ NEXT BUTTON DISABLED IF EMAIL IS INVALID */}
                 <button 
                   type="submit" 
-                  disabled={!emailIsValid || formData.password.length < 6 || isCheckingEmail}
+                  disabled={formData.password.length < 6}
                   style={{ 
                     padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', 
                     fontWeight: '900', fontSize: '15px', marginTop: '10px', transition: '0.3s',
-                    opacity: (!emailIsValid || formData.password.length < 6 || isCheckingEmail) ? 0.5 : 1,
-                    cursor: (!emailIsValid || formData.password.length < 6 || isCheckingEmail) ? 'not-allowed' : 'pointer'
+                    opacity: (formData.password.length < 6) ? 0.5 : 1,
+                    cursor: (formData.password.length < 6) ? 'not-allowed' : 'pointer'
                   }} 
-                  onMouseOver={(e) => { if (emailIsValid && formData.password.length >= 6 && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(-2px)' }} 
-                  onMouseOut={(e) => { if (emailIsValid && formData.password.length >= 6 && !isCheckingEmail) e.currentTarget.style.transform = 'translateY(0)' }}
+                  onMouseOver={(e) => { if (formData.password.length >= 6) e.currentTarget.style.transform = 'translateY(-2px)' }} 
+                  onMouseOut={(e) => { if (formData.password.length >= 6) e.currentTarget.style.transform = 'translateY(0)' }}
                 >
                   Next
                 </button>
               </form>
             </div>
-          ) : (
+          )}
+
+          {/* ================= STEP 3: PROFILE ================= */}
+          {step === 3 && (
             <form onSubmit={handleSignUp} style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
               
               <div>
@@ -395,16 +425,16 @@ function SignUp({ onBackToLogin }) {
 
               <button 
                 type="submit" 
-                disabled={isSubmitting || !isStep2Complete} 
+                disabled={isSubmitting || !isStep3Complete} 
                 style={{ 
                   padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', border: 'none', 
                   fontWeight: '900', fontSize: '15px', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', 
                   transition: '0.3s', 
-                  opacity: isStep2Complete ? 1 : 0.5, 
-                  cursor: isStep2Complete ? 'pointer' : 'not-allowed' 
+                  opacity: isStep3Complete ? 1 : 0.5, 
+                  cursor: isStep3Complete ? 'pointer' : 'not-allowed' 
                 }} 
-                onMouseOver={(e) => { if(!isSubmitting && isStep2Complete) e.currentTarget.style.transform = 'translateY(-2px)'}} 
-                onMouseOut={(e) => { if(!isSubmitting && isStep2Complete) e.currentTarget.style.transform = 'translateY(0)'}}
+                onMouseOver={(e) => { if(!isSubmitting && isStep3Complete) e.currentTarget.style.transform = 'translateY(-2px)'}} 
+                onMouseOut={(e) => { if(!isSubmitting && isStep3Complete) e.currentTarget.style.transform = 'translateY(0)'}}
               >
                 {isSubmitting ? <Loader2 className="spinner" size={20} /> : "Sign Up"}
               </button>

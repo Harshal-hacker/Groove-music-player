@@ -104,10 +104,21 @@ export default function TopHeader({
             {showUserMenu && (
               <div ref={userMenuRef} style={{ position: 'absolute', top: '70px', right: '16px', width: '260px', backgroundColor: '#121212', borderRadius: '20px', padding: '20px', zIndex: 2000, border: '1px solid #333', boxShadow: '0 30px 60px rgba(0,0,0,0.9)', animation: 'ultraFade 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
                 <div style={{ background: '#0a0a0a', borderRadius: '16px', padding: '12px', border: '1px solid #222', marginBottom: '16px', textAlign: 'center' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', margin: '0 auto 10px', background: 'linear-gradient(45deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '900', color: '#000' }}>
-                    {getUserInitial()}
+                  {/* Look for the green circle avatar and the text right below it */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '16px' }}>
+                    <div style={{ 
+                      width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#10b981', 
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontSize: '20px', fontWeight: 'bold', marginBottom: '10px'
+                    }}>
+                      {/* Avatar Letter */}
+                      {(currentUser?.profileName || currentUser?.email || 'U')[0].toUpperCase()}
+                    </div>
+                    
+                    {/* ⚡ THE FIX: Tell it to use profileName first, and fallback to email prefix if missing */}
+                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>
+                      {currentUser?.profileName || currentUser?.email?.split('@')[0]}
+                    </span>
                   </div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: '800' }}>{currentUser?.email?.split('@')[0]}</h3>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', gap: '8px' }}>
