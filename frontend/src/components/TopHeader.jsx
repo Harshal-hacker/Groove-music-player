@@ -98,11 +98,11 @@ export default function TopHeader({
                 boxShadow: '0 0 15px rgba(16, 185, 129, 0.2)', transition: '0.3s', border: '1px solid rgba(255,255,255,0.2)'
               }}
             >
-              {getUserInitial()}
+              {(currentUser?.profileName || currentUser?.email || 'U')[0].toUpperCase()}
             </div>
 
             {showUserMenu && (
-              <div ref={userMenuRef} style={{ position: 'absolute', top: '70px', right: '16px', width: '260px', backgroundColor: '#121212', borderRadius: '20px', padding: '20px', zIndex: 2000, border: '1px solid #333', boxShadow: '0 30px 60px rgba(0,0,0,0.9)', animation: 'ultraFade 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <div ref={userMenuRef} style={{ position: 'absolute', top: '89px', right: '16px', width: '260px', backgroundColor: '#121212', borderRadius: '20px', padding: '20px', zIndex: 2000, border: '1px solid #333', boxShadow: '0 30px 60px rgba(0,0,0,0.9)', animation: 'ultraFade 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
                 <div style={{ background: '#0a0a0a', borderRadius: '16px', padding: '12px', border: '1px solid #222', marginBottom: '16px', textAlign: 'center' }}>
                   {/* Look for the green circle avatar and the text right below it */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '16px' }}>

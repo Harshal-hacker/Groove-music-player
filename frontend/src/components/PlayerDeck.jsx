@@ -141,7 +141,7 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
                 transition: '0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
               }}
             >
-              {isPlaying ? <Pause size={14} color="#000" fill="#000" /> : <Play size={14} color="#000" fill="#000" style={{ marginLeft: '2px' }} /> }
+              {isPlaying ? <Pause size={18} color="#000" fill="#000" /> : <Play size={18} color="#000" fill="#000" style={{ marginLeft: '2px' }} /> }
             </div>
             <SkipForward onClick={handleNext} size={16} fill="#fff" style={{ cursor: 'pointer' }} />
             

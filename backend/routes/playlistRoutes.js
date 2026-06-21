@@ -14,6 +14,7 @@ router.patch('/:id/rename', verifyToken, playlistController.renamePlaylist);
 router.patch('/:id/add-song', verifyToken, playlistController.addSong);
 router.patch('/:id/remove-song', verifyToken, playlistController.removeSong);
 router.patch('/:id/follow', verifyToken, playlistController.followPlaylist);
+router.patch('/:id/edit', verifyToken, playlistController.editPlaylistDetails);
 
 // Deletion
 router.delete('/:id', verifyToken, playlistController.deletePlaylist);

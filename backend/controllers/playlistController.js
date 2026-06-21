@@ -196,3 +196,26 @@ exports.deletePlaylist = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// Update Playlist Details (Name, Cover, Category)
+exports.editPlaylistDetails = async (req, res) => {
+  try {
+    const { name, playlistCover, category } = req.body;
+    const playlistId = req.params.id;
+
+    const updatedPlaylist = await Playlist.findByIdAndUpdate(
+      playlistId,
+      { name, playlistCover, category },
+      { new: true } // Returns the updated document
+    ).populate('songIds'); // Ensures the tracks are still attached to the response
+
+    if (!updatedPlaylist) {
+      return res.status(404).json({ message: "Playlist not found" });
+    }
+
+    res.status(200).json(updatedPlaylist);
+  } catch (error) {
+    console.error("Edit Playlist Error:", error);
+    res.status(500).json({ message: "Failed to update playlist details" });
+  }
+};
