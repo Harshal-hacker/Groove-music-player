@@ -435,37 +435,97 @@ export default function MainFeed({
 
       {/* ================= MODALS ================= */}
 
-      {/* 1. ADD TRACKS MODAL */}
+      {/* ⚡ 1. UPGRADED ADD TRACKS MODAL ⚡ */}
       {showAddTrackModal && selectedPlaylist && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '100%', maxWidth: '500px', height: '70vh', maxHeight: '600px', backgroundColor: '#121212', border: '1px solid #333', borderRadius: '28px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)' }}>
-            <div style={{ padding: '24px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#fff', letterSpacing: '-0.5px' }}>Add Tracks</h3>
-                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase' }}>{userPlaylists.find(p => p._id === selectedPlaylist)?.name}</p>
+        <div style={{ 
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, 
+          backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(12px)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' 
+        }}>
+          <div style={{ 
+            width: '100%', maxWidth: '540px', height: '80vh', maxHeight: '700px', 
+            backgroundColor: '#121212', border: '1px solid rgba(255,255,255,0.08)', 
+            borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', 
+            boxShadow: '0 40px 80px rgba(0,0,0,0.8)' 
+          }}>
+            
+            {/* STICKY HEADER & SEARCH AREA */}
+            <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#121212', zIndex: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: '16px' }}>
+                  <p style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#a7a7a7', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Add songs to
+                  </p>
+                  <h3 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: '#fff', letterSpacing: '-0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {userPlaylists.find(p => p._id === selectedPlaylist)?.name}
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setShowAddTrackModal(false)} 
+                  style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a7a7a7', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }} 
+                  onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }} 
+                  onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#a7a7a7'; }}
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button onClick={() => setShowAddTrackModal(false)} style={{ background: '#1a1a1a', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#333'} onMouseOut={e => e.currentTarget.style.background = '#1a1a1a'}><X size={18} /></button>
-            </div>
-            <div style={{ padding: '16px 24px' }}>
+
+              {/* Enhanced Search Bar */}
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <Search size={18} style={{ position: 'absolute', left: '16px', color: '#64748b' }} />
-                <input type="text" placeholder="Search tracks..." value={addTrackSearch} onChange={(e) => setAddTrackSearch(e.target.value)} style={{ width: '100%', padding: '14px 14px 14px 44px', borderRadius: '14px', border: '1px solid #333', backgroundColor: '#0a0a0a', color: 'white', outline: 'none', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box' }} />
+                <Search size={18} style={{ position: 'absolute', left: '16px', color: '#a7a7a7' }} />
+                <input 
+                  type="text" placeholder="Search tracks or artists..." value={addTrackSearch} onChange={(e) => setAddTrackSearch(e.target.value)} 
+                  style={{ width: '100%', padding: '14px 14px 14px 44px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', outline: 'none', fontSize: '14px', fontWeight: '600', boxSizing: 'border-box', transition: 'border-color 0.2s' }} 
+                  onFocus={e => e.currentTarget.style.borderColor = '#10b981'} 
+                  onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'} 
+                />
               </div>
             </div>
-            <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
+
+            {/* TRACK LISTING */}
+            <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
               {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
                   const isAlreadyAdded = userPlaylists.find(p => p._id === selectedPlaylist)?.songIds?.some(s => (s._id || s) === song._id);
+                  
                   return (
-                    <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '16px', marginBottom: '8px', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#1a1a1a'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <img src={song.cover || "/Groove.png"} alt="" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }} />
-                        <div><div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{song.title}</div><div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{song.artist}</div></div>
+                    <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '12px', marginBottom: '4px', transition: 'all 0.2s', backgroundColor: 'transparent' }} onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', overflow: 'hidden' }}>
+                        <img 
+                          src={song.cover || "/Groove.png"} alt="" 
+                          style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, opacity: isAlreadyAdded ? 0.5 : 1 }} 
+                        />
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: isAlreadyAdded ? '#a7a7a7' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {song.title}
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {song.artist}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* Smooth Action Buttons */}
                       {isAlreadyAdded ? (
-                        <button onClick={() => handleRemoveFromPlaylist(song._id, selectedPlaylist)} style={{ background: 'transparent', border: '1px solid #10b981', color: '#10b981', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s' }}><CheckCircle2 size={18} /></button>
+                        <button 
+                          onClick={() => handleRemoveFromPlaylist(song._id, selectedPlaylist)} 
+                          style={{ background: 'transparent', border: '1px solid transparent', color: '#10b981', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }} 
+                          onMouseOver={e => { e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'; e.currentTarget.style.borderColor = '#10b981'; }} 
+                          onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
                       ) : (
-                        <button onClick={() => handleAddToPlaylist(song._id, selectedPlaylist)} style={{ background: '#fff', border: 'none', color: '#000', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s' }}><Plus size={18} /></button>
+                        <button 
+                          onClick={() => handleAddToPlaylist(song._id, selectedPlaylist)} 
+                          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }} 
+                          onMouseOver={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#000'; e.currentTarget.style.borderColor = '#fff'; }} 
+                          onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
+                        >
+                          <Plus size={16} />
+                        </button>
                       )}
+
                     </div>
                   );
                 })}
