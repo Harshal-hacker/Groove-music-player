@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, ChevronRight, ListMusic, Search, Settings, Heart, Plus, CheckCircle2, MoreHorizontal, PenTool, X } from 'lucide-react';
+import { Play, Pause, ChevronRight, ListMusic, Search, Settings, Heart, Plus, CheckCircle2, MoreHorizontal, PenTool, X, Share2, Download } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
@@ -36,6 +36,10 @@ export default function MainFeed({
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', playlistCover: '', category: '' });
+
+  // ⚡ NEW: Simulated Download State for the Premium UI feel
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const formatTime = (time) => {
     if (time && !isNaN(time)) {
@@ -102,7 +106,7 @@ export default function MainFeed({
     } catch (error) { console.error("Edit failed:", error); }
   };
 
-  // Dashboard Button component
+  // Primary Pill Button
   const DashboardButton = ({ icon, text, onClick, active, highlight }) => (
     <button
       onClick={onClick}
@@ -127,6 +131,30 @@ export default function MainFeed({
     >
       {icon}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+    </button>
+  );
+
+  // ⚡ NEW: Circular Icon Button for the secondary action row
+  const CircularIconButton = ({ icon, onClick, active }) => (
+    <button
+      onClick={onClick}
+      style={{
+        width: '36px', height: '36px', borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: active ? '#10b981' : 'rgba(255,255,255,0.05)',
+        border: 'none', color: active ? '#000' : '#fff',
+        cursor: 'pointer', transition: 'all 0.2s ease', flexShrink: 0
+      }}
+      onMouseOver={e => {
+        e.currentTarget.style.transform = 'scale(1.1)';
+        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+      }}
+      onMouseOut={e => {
+        e.currentTarget.style.transform = 'scale(1)';
+        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+      }}
+    >
+      {icon}
     </button>
   );
 
@@ -227,33 +255,30 @@ export default function MainFeed({
       {activeCategory !== 'All' || selectedPlaylist ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           
-          {/* ⚡ MAGIC CONTAINER QUERY: This tells the inside components to look at the remaining space! */}
           <div style={{ padding: '24px 24px 0 24px', containerType: 'inline-size' }}>
             <div style={{ 
               position: 'relative', overflow: 'hidden',
               background: 'linear-gradient(145deg, #1a1a1c 0%, #0d0d0f 100%)',
               border: '1px solid rgba(255,255,255,0.05)',
               borderRadius: '24px', 
-              padding: 'clamp(16px, 4cqw, 24px)', // Shrinks padding dynamically
+              padding: 'clamp(16px, 4cqw, 24px)', 
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               boxShadow: '0 30px 60px rgba(0,0,0,0.6)', 
-              gap: 'clamp(16px, 3cqw, 24px)', // Shrinks gap dynamically
+              gap: 'clamp(16px, 3cqw, 24px)', 
               flexWrap: 'nowrap'
             }}>
               
               <div style={{ position: 'absolute', right: '-10%', top: '-30%', width: '400px', height: '400px', background: '#10b981', filter: 'blur(150px)', opacity: 0.1, zIndex: 0 }} />
 
-              {/* ⚡ THE CIRCLED AREA: Left Side Art + Info */}
+              {/* LEFT SIDE: Art + Info */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(16px, 4cqw, 24px)', zIndex: 1, flex: '1 1 0%', minWidth: 0 }}>
                 
-                {/* ⚡ RESPONSIVE ARTWORK: Automatically scales between 100px and 220px based on available space */}
                 <div style={{ position: 'relative', width: 'clamp(110px, 20cqw, 220px)', flexShrink: 0, aspectRatio: '1/1' }}>
                   <img 
                     src={userPlaylists.find(p => p._id === selectedPlaylist)?.playlistCover || (filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png")} 
                     alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} 
                     style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'clamp(12px, 2cqw, 20px)', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}
                   />
-                  {/* Play Button scales with the artwork! */}
                   <button 
                     onClick={() => {
                       const isThisPlaylistActive = currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id);
@@ -290,7 +315,6 @@ export default function MainFeed({
                   </button>
                 </div>
 
-                {/* ⚡ RESPONSIVE TYPOGRAPHY: Fonts dynamically shrink when Queue opens */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: '8px', marginBottom: 'clamp(8px, 1cqw, 12px)' }}>
                     <div style={{ padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderRadius: '6px', fontSize: 'clamp(8px, 1.5cqw, 10px)', fontWeight: '900', letterSpacing: '1px', whiteSpace: 'nowrap' }}>
@@ -306,7 +330,7 @@ export default function MainFeed({
                     />
                   ) : (
                     <h1 style={{ 
-                      fontSize: 'clamp(24px, 6cqw, 56px)', // Font magically drops when squeezed
+                      fontSize: 'clamp(24px, 6cqw, 56px)',
                       fontWeight: '900', color: '#fff', 
                       margin: '0 0 8px 0', letterSpacing: '-1px', lineHeight: 1.1, 
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%'
@@ -376,6 +400,52 @@ export default function MainFeed({
                     />
                   </>
                 )}
+
+                {/* ⚡ NEW: Secondary Action Row (Share, Download, More) */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px', justifyContent: 'space-between', width: '100%' }}>
+                  <CircularIconButton 
+                    icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
+                    success={isCopied}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await navigator.clipboard.writeText(`${window.location.origin}/playlist/${selectedPlaylist}`);
+                        setIsCopied(true);
+                        setTimeout(() => setIsCopied(false), 2000); // Reverts back to Share icon after 2s
+                        if (setToast) {
+                          setToast({ message: "Link copied to clipboard!", type: 'success' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      } catch (err) {
+                        console.error("Failed to copy", err);
+                      }
+                    }} 
+                  />
+                  <CircularIconButton 
+                    icon={<Download size={16} />} 
+                    active={isDownloaded}
+                    onClick={() => {
+                      setIsDownloaded(!isDownloaded);
+                      setToast({ message: isDownloaded ? "Removed from downloads." : "Downloading playlist...", type: 'success' });
+                      setTimeout(() => setToast(null), 3000);
+                    }} 
+                  />
+                  <CircularIconButton 
+                      icon={<MoreHorizontal size={16} />} 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const fakeEvent = {
+                          preventDefault: () => {},
+                          clientX: rect.left,
+                          clientY: rect.bottom + 10 // Opens 10 pixels below the button!
+                        };
+                        handleContextMenu(fakeEvent, selectedPlaylist, 'playlist', 'header');
+                      }} 
+                    />
+                </div>
+
               </div>
             </div>
           </div>
@@ -435,21 +505,11 @@ export default function MainFeed({
 
       {/* ================= MODALS ================= */}
 
-      {/* ⚡ 1. UPGRADED ADD TRACKS MODAL ⚡ */}
+      {/* 1. ADD TRACKS MODAL */}
       {showAddTrackModal && selectedPlaylist && (
-        <div style={{ 
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, 
-          backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(12px)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' 
-        }}>
-          <div style={{ 
-            width: '100%', maxWidth: '540px', height: '80vh', maxHeight: '700px', 
-            backgroundColor: '#121212', border: '1px solid rgba(255,255,255,0.08)', 
-            borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', 
-            boxShadow: '0 40px 80px rgba(0,0,0,0.8)' 
-          }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ width: '100%', maxWidth: '540px', height: '80vh', maxHeight: '700px', backgroundColor: '#121212', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 40px 80px rgba(0,0,0,0.8)' }}>
             
-            {/* STICKY HEADER & SEARCH AREA */}
             <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#121212', zIndex: 2 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                 <div style={{ flex: 1, minWidth: 0, paddingRight: '16px' }}>
@@ -470,7 +530,6 @@ export default function MainFeed({
                 </button>
               </div>
 
-              {/* Enhanced Search Bar */}
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <Search size={18} style={{ position: 'absolute', left: '16px', color: '#a7a7a7' }} />
                 <input 
@@ -482,7 +541,6 @@ export default function MainFeed({
               </div>
             </div>
 
-            {/* TRACK LISTING */}
             <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
               {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
                   const isAlreadyAdded = userPlaylists.find(p => p._id === selectedPlaylist)?.songIds?.some(s => (s._id || s) === song._id);
@@ -505,7 +563,6 @@ export default function MainFeed({
                         </div>
                       </div>
 
-                      {/* Smooth Action Buttons */}
                       {isAlreadyAdded ? (
                         <button 
                           onClick={() => handleRemoveFromPlaylist(song._id, selectedPlaylist)} 
