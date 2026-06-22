@@ -143,6 +143,27 @@ export default function MainFeed({
     </button>
   );
 
+  // ⚡ THE FIX: Smart logic to bypass default database Groove.png covers
+  const getHeaderCoverImage = () => {
+    const currentPl = userPlaylists.find(p => p._id === selectedPlaylist);
+    const firstTrackCover = filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : null;
+    
+    // If there is a valid custom cover AND it's NOT the default Groove image
+    if (currentPl?.playlistCover && currentPl.playlistCover.trim() !== '' && !currentPl.playlistCover.includes('Groove.png')) {
+      return currentPl.playlistCover;
+    }
+    
+    // Fallback exactly to the 1st song in the playlist!
+    if (firstTrackCover) {
+      return firstTrackCover;
+    }
+    
+    // Absolute fallback if the playlist is empty
+    return "/Groove.png";
+  };
+
+  const headerCoverImage = getHeaderCoverImage();
+
   return (
     <main 
       className="bento-scrollbar"
@@ -162,9 +183,9 @@ export default function MainFeed({
               const categoryPlaylists = readyMadePlaylists.filter(pl => (pl.category || 'Featured') === categoryName);
               if (categoryPlaylists.length === 0) return null;
               const shelfId = `shelf-${categoryName.replace(/\s+/g, '-').toLowerCase()}`;
-
+              
               return (
-                <div key={categoryName} style={{ marginBottom: '20px', position: 'relative' }} className="jio-shelf-group">
+                <div key={categoryName} style={{ marginBottom: '50px', position: 'relative' }} className="jio-shelf-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px', color: '#fff', margin: 0 }}>{categoryName}</h3>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -272,8 +293,9 @@ export default function MainFeed({
                   cursor: 'pointer' 
                 }}
               >
+                {/* ⚡ THE FIX: Using headerCoverImage instead of directly referencing userPlaylists */}
                 <img 
-                  src={userPlaylists.find(p => p._id === selectedPlaylist)?.playlistCover || (filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png")} 
+                  src={headerCoverImage} 
                   alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} 
                   style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease', transform: isArtHovered ? 'scale(1.05)' : 'scale(1)' }}
                 />
