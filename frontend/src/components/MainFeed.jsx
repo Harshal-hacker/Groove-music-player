@@ -37,9 +37,11 @@ export default function MainFeed({
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', playlistCover: '', category: '' });
 
-  // ⚡ NEW: Simulated Download State for the Premium UI feel
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  
+  // Hover state for the artwork play button
+  const [isArtHovered, setIsArtHovered] = useState(false);
 
   const formatTime = (time) => {
     if (time && !isNaN(time)) {
@@ -100,61 +102,44 @@ export default function MainFeed({
         const updatedPl = await res.json();
         setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPl : p));
         setShowEditModal(false);
-        setToast({ message: "Playlist details updated!", type: 'success' });
-        setTimeout(() => setToast(null), 3000);
+        if (setToast) {
+          setToast({ message: "Playlist details updated!", type: 'success' });
+          setTimeout(() => setToast(null), 3000);
+        }
       }
     } catch (error) { console.error("Edit failed:", error); }
   };
 
-  // Primary Pill Button
-  const DashboardButton = ({ icon, text, onClick, active, highlight }) => (
+  // ⚡ THE NEW FLOATING DOCK BUTTON
+  const DockButton = ({ icon, text, onClick, active, success }) => (
     <button
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: '8px', 
-        width: '100%', padding: '10px 14px', 
-        background: active ? 'rgba(16, 185, 129, 0.1)' : highlight ? '#fff' : 'rgba(255,255,255,0.03)',
-        border: active ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
-        borderRadius: '12px',
-        color: active ? '#10b981' : highlight ? '#000' : '#fff',
-        fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+        padding: text ? '8px 16px' : '8px', 
+        background: active ? '#10b981' : success ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+        border: 'none', borderRadius: '50px',
+        color: active ? '#000' : success ? '#10b981' : '#a7a7a7',
+        fontSize: '13px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        whiteSpace: 'nowrap', flexShrink: 0
       }}
       onMouseOver={e => {
-        if (!highlight) e.currentTarget.style.background = active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.08)';
-        e.currentTarget.style.transform = 'translateY(-2px)';
+        if (!active && !success) {
+          e.currentTarget.style.color = '#fff';
+          e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+        }
+        e.currentTarget.style.transform = 'scale(1.05)';
       }}
       onMouseOut={e => {
-        if (!highlight) e.currentTarget.style.background = active ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.03)';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      {icon}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
-    </button>
-  );
-
-  // ⚡ NEW: Circular Icon Button for the secondary action row
-  const CircularIconButton = ({ icon, onClick, active }) => (
-    <button
-      onClick={onClick}
-      style={{
-        width: '36px', height: '36px', borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: active ? '#10b981' : 'rgba(255,255,255,0.05)',
-        border: 'none', color: active ? '#000' : '#fff',
-        cursor: 'pointer', transition: 'all 0.2s ease', flexShrink: 0
-      }}
-      onMouseOver={e => {
-        e.currentTarget.style.transform = 'scale(1.1)';
-        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-      }}
-      onMouseOut={e => {
+        if (!active && !success) {
+          e.currentTarget.style.color = '#a7a7a7';
+          e.currentTarget.style.background = 'transparent';
+        }
         e.currentTarget.style.transform = 'scale(1)';
-        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
       }}
     >
       {icon}
+      {text && <span>{text}</span>}
     </button>
   );
 
@@ -177,9 +162,9 @@ export default function MainFeed({
               const categoryPlaylists = readyMadePlaylists.filter(pl => (pl.category || 'Featured') === categoryName);
               if (categoryPlaylists.length === 0) return null;
               const shelfId = `shelf-${categoryName.replace(/\s+/g, '-').toLowerCase()}`;
-              
+
               return (
-                <div key={categoryName} style={{ marginBottom: '50px', position: 'relative' }} className="jio-shelf-group">
+                <div key={categoryName} style={{ marginBottom: '20px', position: 'relative' }} className="jio-shelf-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px', color: '#fff', margin: 0 }}>{categoryName}</h3>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -227,9 +212,7 @@ export default function MainFeed({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px', paddingBottom: '40px' }}>
             {filteredPlaylist.map((track) => {
-              const displayCover = track.cover || "/Groove.png";
               const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
-              
               return (
                 <div key={track._id} className={`advanced-music-card ${isActive ? 'active' : ''}`} onClick={() => { setPlaybackContext(filteredPlaylist); setSelectedPlaylist(selectedPlaylist); setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); setIsPlaying(true); syncPlayback(track._id, 0, selectedPlaylist); if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false; }} onContextMenu={(e) => handleContextMenu(e, track._id, 'song')} style={{ cursor: 'pointer', padding: '16px', borderRadius: '20px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', backgroundColor: isActive ? '#1a1a1a' : '#0a0a0a', border: isActive ? '1px solid #10b981' : '1px solid #333' }}>
                   <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', aspectRatio: '1/1', boxShadow: '0 12px 24px rgba(0,0,0,0.3)', marginBottom: '16px' }}>
@@ -251,258 +234,220 @@ export default function MainFeed({
         </div>
       )}
 
-      {/* 3. PLAYLIST DETAIL VIEW */}
+      {/* 3. PLAYLIST DETAIL VIEW (⚡ THE NEW CINEMATIC DOCK DESIGN ⚡) */}
       {activeCategory !== 'All' || selectedPlaylist ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           
-          <div style={{ padding: '24px 24px 0 24px', containerType: 'inline-size' }}>
-            <div style={{ 
-              position: 'relative', overflow: 'hidden',
-              background: 'linear-gradient(145deg, #1a1a1c 0%, #0d0d0f 100%)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '24px', 
-              padding: 'clamp(16px, 4cqw, 24px)', 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              boxShadow: '0 30px 60px rgba(0,0,0,0.6)', 
-              gap: 'clamp(16px, 3cqw, 24px)', 
-              flexWrap: 'nowrap'
-            }}>
+          {/* THE HEADER CONTAINER */}
+          <div style={{ position: 'relative', padding: 'clamp(24px, 5cqw, 40px)', containerType: 'inline-size', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            
+            {/* Atmospheric Background Glow */}
+            <div style={{ position: 'absolute', left: '10%', top: '0', width: '60%', height: '100%', background: '#10b981', filter: 'blur(180px)', opacity: 0.08, zIndex: 0, pointerEvents: 'none' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(20px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'nowrap' }}>
               
-              <div style={{ position: 'absolute', right: '-10%', top: '-30%', width: '400px', height: '400px', background: '#10b981', filter: 'blur(150px)', opacity: 0.1, zIndex: 0 }} />
-
-              {/* LEFT SIDE: Art + Info */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(16px, 4cqw, 24px)', zIndex: 1, flex: '1 1 0%', minWidth: 0 }}>
+              {/* ⚡ THE ARTWORK: Hover to Reveal Cinematic Play Button */}
+              <div 
+                onMouseEnter={() => setIsArtHovered(true)}
+                onMouseLeave={() => setIsArtHovered(false)}
+                onClick={() => {
+                  const isThisPlaylistActive = currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id);
+                  if (isThisPlaylistActive) {
+                    togglePlayPause();
+                  } else {
+                    if (filteredPlaylist.length > 0) {
+                      setPlaybackContext(filteredPlaylist); 
+                      setActivePlaylistName(getContextName());
+                      setPlayingPlaylistId(selectedPlaylist); 
+                      setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
+                      setIsPlaying(true);
+                      syncPlayback(filteredPlaylist[0]._id, 0, selectedPlaylist); 
+                      if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
+                    }
+                  }
+                }}
+                style={{ 
+                  position: 'relative', width: 'clamp(140px, 20cqw, 240px)', flexShrink: 0, aspectRatio: '1/1', 
+                  borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+                  cursor: 'pointer' 
+                }}
+              >
+                <img 
+                  src={userPlaylists.find(p => p._id === selectedPlaylist)?.playlistCover || (filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png")} 
+                  alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease', transform: isArtHovered ? 'scale(1.05)' : 'scale(1)' }}
+                />
                 
-                <div style={{ position: 'relative', width: 'clamp(110px, 20cqw, 220px)', flexShrink: 0, aspectRatio: '1/1' }}>
-                  <img 
-                    src={userPlaylists.find(p => p._id === selectedPlaylist)?.playlistCover || (filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png")} 
-                    alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} 
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'clamp(12px, 2cqw, 20px)', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}
-                  />
-                  <button 
-                    onClick={() => {
-                      const isThisPlaylistActive = currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id);
-                      if (isThisPlaylistActive) {
-                        togglePlayPause();
-                      } else {
-                        if (filteredPlaylist.length > 0) {
-                          setPlaybackContext(filteredPlaylist); 
-                          setActivePlaylistName(getContextName());
-                          setPlayingPlaylistId(selectedPlaylist); 
-                          setCurrentTrackIndex(playlist.findIndex(s => s._id === filteredPlaylist[0]._id));
-                          setIsPlaying(true);
-                          syncPlayback(filteredPlaylist[0]._id, 0, selectedPlaylist); 
-                          if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
-                        }
-                      }
-                    }}
-                    style={{
-                      position: 'absolute', bottom: 'clamp(-8px, -1.5cqw, -12px)', right: 'clamp(-8px, -1.5cqw, -12px)',
-                      width: 'clamp(44px, 8cqw, 56px)', height: 'clamp(44px, 8cqw, 56px)', 
-                      borderRadius: 'clamp(12px, 2cqw, 20px)', background: '#10b981',
-                      border: '4px solid #1a1a1c', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                      boxShadow: '0 10px 20px rgba(16,185,129,0.4)'
-                    }}
-                    onMouseOver={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                    onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                  >
+                {/* Dark Overlay on Hover */}
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', opacity: isArtHovered ? 1 : 0, transition: 'opacity 0.3s ease' }} />
+
+                {/* Massive Play/Pause Icon Over Artwork */}
+                <div style={{ 
+                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: isArtHovered || (isPlaying && currentTrack && filteredPlaylist.some(t => t._id === currentTrack._id)) ? 1 : 0,
+                  transform: isArtHovered ? 'scale(1)' : 'scale(0.8)',
+                  transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 30px rgba(16,185,129,0.5)' }}>
                     {isPlaying && (currentTrack && filteredPlaylist.some(track => track._id === currentTrack._id)) ? (
-                      <Pause size={20} fill="#000" color="#000" /> 
+                      <Pause size={32} fill="#000" color="#000" /> 
                     ) : (
-                      <Play size={20} fill="#000" color="#000" style={{marginLeft: '2px'}} />
+                      <Play size={32} fill="#000" color="#000" style={{marginLeft: '4px'}} />
                     )}
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: 'clamp(8px, 1cqw, 12px)' }}>
-                    <div style={{ padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderRadius: '6px', fontSize: 'clamp(8px, 1.5cqw, 10px)', fontWeight: '900', letterSpacing: '1px', whiteSpace: 'nowrap' }}>
-                      {activeCategory === 'Liked' ? 'LIBRARY' : 'COLLECTION'}
-                    </div>
                   </div>
-
-                  {isEditingName ? (
-                    <input
-                      autoFocus value={tempName} onChange={(e) => setTempName(e.target.value)} onBlur={handleInlineRename}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleInlineRename(); if (e.key === 'Escape') setIsEditingName(false); }}
-                      style={{ background: 'rgba(0,0,0,0.5)', border: '2px solid #10b981', color: 'white', outline: 'none', borderRadius: '12px', padding: '12px', fontSize: 'clamp(24px, 5cqw, 36px)', fontWeight: '900', width: '100%', marginBottom: '8px', boxSizing: 'border-box' }}
-                    />
-                  ) : (
-                    <h1 style={{ 
-                      fontSize: 'clamp(24px, 6cqw, 56px)',
-                      fontWeight: '900', color: '#fff', 
-                      margin: '0 0 8px 0', letterSpacing: '-1px', lineHeight: 1.1, 
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%'
-                    }}>
-                      {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
-                    </h1>
-                  )}
-
-                  <p style={{ color: '#a7a7a7', fontSize: 'clamp(11px, 2cqw, 13px)', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
-                    <span style={{ color: '#fff', fontWeight: '800' }}>
-                      {selectedPlaylist ? 'Groove Audio' : currentUser?.profileName || 'User'}
-                    </span>
-                    <span style={{ width: '4px', height: '4px', background: '#333', borderRadius: '50%', flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap' }}>
-                      {filteredPlaylist.length} Tracks • {(() => {
-                        const totalSeconds = filteredPlaylist.reduce((total, track) => {
-                          let sec = 0;
-                          if (typeof track.duration === 'string' && track.duration.includes(':')) {
-                            const parts = track.duration.split(':');
-                            sec = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-                          } else { sec = Number(track.duration) || 0; }
-                          return total + sec;
-                        }, 0);
-                        const hours = Math.floor(totalSeconds / 3600);
-                        const minutes = Math.floor((totalSeconds % 3600) / 60);
-                        if (hours > 0) return `${hours} hr ${minutes} min`;
-                        else if (minutes > 0) return `${minutes} min`;
-                        else return `0 min`;
-                      })()}
-                    </span>
-                  </p>
                 </div>
               </div>
 
-              {/* RIGHT SIDE: Action Dashboard Control Panel */}
-              <div style={{ 
-                display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 1, 
-                flex: '0 0 clamp(120px, 15cqw, 140px)', 
-                paddingLeft: 'clamp(16px, 3cqw, 32px)', borderLeft: '1px solid rgba(255,255,255,0.05)' 
-              }}>
-                {/* ⚡ OPTIMISTIC UI: Save to Library */}
-                {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
-                  <DashboardButton 
-                    icon={<Heart size={16} />} 
-                    text={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "Saved to Library" : "Save to Library"}
-                    active={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id)}
-                    onClick={async () => {
-                      const userId = currentUser?._id;
-                      if (!userId) return alert("Please log in!");
+              {/* ⚡ TYPOGRAPHY AND FLOATING DOCK */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
+                
+                <div style={{ fontSize: 'clamp(10px, 1.5cqw, 12px)', fontWeight: '900', color: '#10b981', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  {activeCategory === 'Liked' ? 'LIBRARY' : 'COLLECTION'}
+                </div>
 
-                      const currentPlaylist = userPlaylists.find(p => p._id === selectedPlaylist);
-                      const isCurrentlySaved = currentPlaylist?.followers?.includes(userId);
+                {isEditingName ? (
+                  <input
+                    autoFocus value={tempName} onChange={(e) => setTempName(e.target.value)} onBlur={handleInlineRename}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleInlineRename(); if (e.key === 'Escape') setIsEditingName(false); }}
+                    style={{ background: 'rgba(0,0,0,0.5)', border: '2px solid #10b981', color: 'white', outline: 'none', borderRadius: '12px', padding: '8px 16px', fontSize: 'clamp(32px, 6cqw, 64px)', fontWeight: '900', width: '100%', marginBottom: '8px', boxSizing: 'border-box' }}
+                  />
+                ) : (
+                  <h1 style={{ 
+                    fontSize: 'clamp(32px, 6cqw, 72px)', fontWeight: '900', color: '#fff', 
+                    margin: '0 0 16px 0', letterSpacing: '-1.5px', lineHeight: 1.1, 
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%'
+                  }}>
+                    {selectedPlaylist ? userPlaylists.find(p => p._id === selectedPlaylist)?.name : "Liked Library"}
+                  </h1>
+                )}
 
-                      // 1. OPTIMISTIC UPDATE: Update UI instantly
-                      setUserPlaylists(prev => prev.map(p => {
-                        if (p._id === selectedPlaylist) {
-                          const newFollowers = isCurrentlySaved 
-                            ? p.followers.filter(id => id !== userId) 
-                            : [...(p.followers || []), userId];       
-                          return { ...p, followers: newFollowers };
-                        }
-                        return p;
-                      }));
+                <p style={{ color: '#a7a7a7', fontSize: 'clamp(12px, 2cqw, 14px)', fontWeight: '600', margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
+                  <span style={{ color: '#fff', fontWeight: '800' }}>{selectedPlaylist ? 'Groove Audio' : currentUser?.profileName || 'User'}</span>
+                  <span>•</span>
+                  <span>{filteredPlaylist.length} Tracks</span>
+                  <span>•</span>
+                  <span>
+                    {(() => {
+                      const totalSeconds = filteredPlaylist.reduce((total, track) => {
+                        let sec = 0;
+                        if (typeof track.duration === 'string' && track.duration.includes(':')) {
+                          const parts = track.duration.split(':');
+                          sec = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                        } else { sec = Number(track.duration) || 0; }
+                        return total + sec;
+                      }, 0);
+                      const hours = Math.floor(totalSeconds / 3600);
+                      const minutes = Math.floor((totalSeconds % 3600) / 60);
+                      if (hours > 0) return `${hours} hr ${minutes} min`;
+                      else if (minutes > 0) return `${minutes} min`;
+                      else return `0 min`;
+                    })()}
+                  </span>
+                </p>
 
-                      if (setToast) {
-                        setToast({ message: isCurrentlySaved ? "Removed from library." : "Added to collection!", type: 'success' });
-                        setTimeout(() => setToast(null), 3000);
-                      }
+                {/* ⚡ THE FLOATING GLASS DOCK (Replaces the rigid right panel) */}
+                <div style={{ 
+                  display: 'flex', alignItems: 'center', gap: '8px', 
+                  padding: '6px', background: 'rgba(255,255,255,0.03)', 
+                  border: '1px solid rgba(255,255,255,0.05)', borderRadius: '50px',
+                  backdropFilter: 'blur(10px)', flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%'
+                }}>
+                  
+                  {/* Save to Library */}
+                  {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
+                    <DockButton 
+                      icon={<Heart size={16} fill={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "none"} color={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "currentColor"} />} 
+                      text="Save"
+                      active={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id)}
+                      onClick={async () => {
+                        const userId = currentUser?._id;
+                        if (!userId) return alert("Please log in!");
 
-                      // 2. BACKGROUND SYNC
-                      try {
-                        const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, { 
-                          method: 'PATCH', 
-                          headers: { 'Content-Type': 'application/json' }, 
-                          body: JSON.stringify({ userId }), 
-                          credentials: 'include' 
-                        });
-                        
-                        if (res.ok) {
-                          const updatedPlaylist = await res.json();
-                          setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
-                        } else {
-                          throw new Error("Server rejected");
-                        }
-                      } catch (err) {
-                        console.error("Save action failed:", err);
-                        // 3. ROLLBACK IF FAILED
+                        const currentPlaylist = userPlaylists.find(p => p._id === selectedPlaylist);
+                        const isCurrentlySaved = currentPlaylist?.followers?.includes(userId);
+
+                        // Optimistic Update
                         setUserPlaylists(prev => prev.map(p => {
                           if (p._id === selectedPlaylist) {
-                            const revertedFollowers = isCurrentlySaved 
-                              ? [...(p.followers || []), userId] 
-                              : p.followers.filter(id => id !== userId); 
-                            return { ...p, followers: revertedFollowers };
+                            const newFollowers = isCurrentlySaved ? p.followers.filter(id => id !== userId) : [...(p.followers || []), userId];       
+                            return { ...p, followers: newFollowers };
                           }
                           return p;
                         }));
+
                         if (setToast) {
-                          setToast({ message: "Network error. Couldn't save playlist.", type: 'error' });
+                          setToast({ message: isCurrentlySaved ? "Removed from library." : "Added to collection!", type: 'success' });
                           setTimeout(() => setToast(null), 3000);
                         }
-                      }
-                    }}
-                  />
-                )}
-                {isAdmin && selectedPlaylist && (
-                  <>
-                    <DashboardButton 
-                      icon={<Plus size={16} />} 
-                      text="Add Tracks" 
-                      highlight={true} 
-                      onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} 
-                    />
-                    <DashboardButton 
-                      icon={<PenTool size={16} />} 
-                      text="Edit Details" 
-                      onClick={openEditModal} 
-                    />
-                  </>
-                )}
 
-                {/* Secondary Action Row */}
-                {selectedPlaylist && (
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px', justifyContent: 'space-between', width: '100%' }}>
-                    
-                    <CircularIconButton 
-                      icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
-                      success={isCopied}
-                      onClick={async (e) => {
-                        e.stopPropagation();
                         try {
-                          await navigator.clipboard.writeText(`${window.location.origin}/playlist/${selectedPlaylist}`);
-                          setIsCopied(true);
-                          setTimeout(() => setIsCopied(false), 2000); 
+                          const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }), credentials: 'include' });
+                          if (res.ok) {
+                            const updatedPlaylist = await res.json();
+                            setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
+                          }
+                        } catch (err) { console.error("Save action failed:", err); }
+                      }}
+                    />
+                  )}
+
+                  {/* Share, Download, More */}
+                  {selectedPlaylist && (
+                    <>
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+                      
+                      <DockButton 
+                        icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
+                        success={isCopied}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await navigator.clipboard.writeText(`${window.location.origin}/playlist/${selectedPlaylist}`);
+                            setIsCopied(true);
+                            setTimeout(() => setIsCopied(false), 2000); 
+                            if (setToast) {
+                              setToast({ message: "Link copied to clipboard!", type: 'success' });
+                              setTimeout(() => setToast(null), 3000);
+                            }
+                          } catch (err) {}
+                        }} 
+                      />
+                      
+                      <DockButton 
+                        icon={<Download size={16} />} 
+                        success={isDownloaded}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsDownloaded(!isDownloaded);
                           if (setToast) {
-                            setToast({ message: "Link copied to clipboard!", type: 'success' });
+                            setToast({ message: isDownloaded ? "Removed from downloads." : "Downloading playlist...", type: 'success' });
                             setTimeout(() => setToast(null), 3000);
                           }
-                        } catch (err) {
-                          console.error("Failed to copy", err);
-                        }
-                      }} 
-                    />
-                    
-                    <CircularIconButton 
-                      icon={<Download size={16} />} 
-                      active={isDownloaded}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsDownloaded(!isDownloaded);
-                        if (setToast) {
-                          setToast({ message: isDownloaded ? "Removed from downloads." : "Downloading playlist...", type: 'success' });
-                          setTimeout(() => setToast(null), 3000);
-                        }
-                      }} 
-                    />
-                    
-                    <CircularIconButton 
-                      icon={<MoreHorizontal size={16} />} 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const fakeEvent = {
-                          preventDefault: () => {},
-                          clientX: rect.left,
-                          clientY: rect.bottom + 10 
-                        };
-                        handleContextMenu(fakeEvent, selectedPlaylist, 'playlist', 'header');
-                      }} 
-                    />
-                  </div>
-                )}
+                        }} 
+                      />
+
+                      <DockButton 
+                        icon={<MoreHorizontal size={16} />} 
+                        onClick={(e) => {
+                          e.preventDefault(); e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const fakeEvent = { preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom + 10 };
+                          handleContextMenu(fakeEvent, selectedPlaylist, 'playlist', 'header');
+                        }} 
+                      />
+                    </>
+                  )}
+
+                  {/* Admin Actions */}
+                  {isAdmin && selectedPlaylist && (
+                    <>
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+                      <DockButton icon={<Plus size={16} />} text="Add Tracks" onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} />
+                      <DockButton icon={<PenTool size={16} />} text="Edit" onClick={openEditModal} />
+                    </>
+                  )}
+                  
+                </div>
               </div>
             </div>
           </div>

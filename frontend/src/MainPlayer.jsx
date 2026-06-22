@@ -10,10 +10,9 @@ import { usePlayer } from './context/PlayerContext';
 import Sidebar from './components/Sidebar';
 import MainFeed from './components/MainFeed';
 import ContextMenu from './components/ContextMenu';
-
-// ⚡ OUR BRAND NEW, CLEAN COMPONENTS
 import TopHeader from './components/TopHeader';
 import RightQueue from './components/RightQueue';
+import SearchModal from './components/SearchModal'; // ⚡ NEW IMPORT
 
 const Admin = lazy(() => import('./Admin'));
 const Profile = lazy(() => import('./components/Profile'));
@@ -177,7 +176,6 @@ function MainPlayer() {
 
   useEffect(() => {
     const handleGlobalContextMenu = (e) => {
-      // This prevents the default browser menu on the entire page
       e.preventDefault();
     };
 
@@ -185,10 +183,22 @@ function MainPlayer() {
     return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
   }, []);
 
+  // ⚡ DEDICATED SEARCH CLOSE HANDLER
+  const closeSearchModal = () => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setDebouncedQuery('');
+  };
+
   useEffect(() => {
     const handleGlobalShortcuts = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setIsSearchOpen(true); return; }
-      if (e.key === 'Escape') { setIsSearchOpen(false); setIsShortcutHelpOpen(false); }
+      
+      if (e.key === 'Escape') { 
+        closeSearchModal();
+        setIsShortcutHelpOpen(false); 
+      }
+      
       if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); setIsShortcutHelpOpen(prev => !prev); return; }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; 
       if (e.code === 'Space' || e.code === 'MediaPlayPause') { e.preventDefault(); togglePlayPause(); }
@@ -431,13 +441,12 @@ function MainPlayer() {
   return (
     <div className="bento-shell" style={{ backgroundColor: '#000', height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', padding: '12px', gap: '12px', boxSizing: 'border-box', overflow: 'hidden', color: '#fff', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 
-      {/* ⚡ 1. THE NEW TOP HEADER COMPONENT */}
       <TopHeader 
         activeCategory={activeCategory} setActiveCategory={setActiveCategory} selectedPlaylist={selectedPlaylist} setShowLikedOnly={setShowLikedOnly}
         setIsSearchOpen={setIsSearchOpen} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onLogout={handleLogout} setToast={setToast}
       />
 
-      <div style={{ display: 'flex', flex: 1, gap: '12px', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, width: '100%', gap: '12px', overflow: 'hidden', boxSizing: 'border-box' }}>
         <Sidebar 
           isAuthenticated={isAuthenticated} isAdmin={isAdmin} setShowAdmin={setShowAdmin} handleCreatePlaylistInline={handleCreatePlaylistInline}
           activeCategory={activeCategory} setActiveCategory={setActiveCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist}
@@ -445,7 +454,7 @@ function MainPlayer() {
         />
 
         <AnimatePresence mode="wait">
-          <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} style={{ flex: 1, minWidth: 0, width: '100%', display: 'flex', overflow: 'hidden' }}>
             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
               {location.pathname === '/profile' ? <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
                : location.pathname === '/settings' ? <Settings handleLogout={handleLogout} /> 
@@ -454,20 +463,20 @@ function MainPlayer() {
           </motion.div>
         </AnimatePresence>
         
-        {/* ⚡ 2. THE NEW QUEUE SIDEBAR COMPONENT */}
-        <RightQueue 
-          isQueueOpen={isQueueOpen} 
-          setIsQueueOpen={setIsQueueOpen} 
-          lastContextIndexRef={lastContextIndexRef} 
-          playlist={playlist} 
-          handleContextMenu={handleContextMenu} 
-          setConfirmDialog={setConfirmDialog}
-        />
+        {isQueueOpen && (
+          <RightQueue 
+            isQueueOpen={isQueueOpen} 
+            setIsQueueOpen={setIsQueueOpen} 
+            lastContextIndexRef={lastContextIndexRef} 
+            playlist={playlist} 
+            handleContextMenu={handleContextMenu} 
+            setConfirmDialog={setConfirmDialog}
+          />
+        )}
       </div>
 
       <PlayerDeck isQueueOpen={isQueueOpen} setIsQueueOpen={setIsQueueOpen} />
 
-      {/* ⚡ THE EXTRACTED CONTEXT MENU */}
       <ContextMenu 
         menu={contextMenu} 
         closeMenu={() => setContextMenu(null)} 
@@ -494,21 +503,14 @@ function MainPlayer() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'ultraFade 0.2s ease-out'
         }}>
           <div style={{
-            /* ⚡ COMPACT FIX: Reduced width (320px), padding (24px), and border radius (16px) */
             width: '100%', maxWidth: '320px', backgroundColor: '#121212', border: '1px solid #333', borderRadius: '16px',
             padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
           }}>
-            
-            {/* ⚡ COMPACT FIX: Shrunk the icon circle from 60px to 48px */}
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
               <Trash2 size={24} color="#ef4444" />
             </div>
-            
-            {/* ⚡ COMPACT FIX: Tighter typography margins and smaller fonts */}
             <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.5px' }}>{confirmDialog.title}</h3>
             <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', fontWeight: '500' }}>{confirmDialog.message}</p>
-            
-            {/* ⚡ COMPACT FIX: Slimmer buttons and tighter gap */}
             <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
               <button 
                 onClick={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })}
@@ -527,63 +529,21 @@ function MainPlayer() {
                 {confirmDialog.confirmText || "YES, DELETE"}
               </button>
             </div>
-            
           </div>
         </div>
       )}
 
-      {isSearchOpen && (
-        <div 
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, backgroundColor: 'rgba(0, 0, 0, 0.8)', display: 'flex', justifyContent: 'center', paddingTop: '12vh', animation: 'ultraFade 0.2s ease-out' }}
-          onClick={() => setIsSearchOpen(false)} 
-        >
-          <div 
-            style={{ width: '100%', maxWidth: '650px', height: 'fit-content', maxHeight: '70vh', backgroundColor: '#121212', border: '1px solid #333', borderRadius: '20px', display: 'flex', flexDirection: 'column', boxShadow: '0 40px 80px rgba(0,0,0,0.9)' }}
-            onClick={(e) => e.stopPropagation()} 
-          >
-            <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #333', background: '#0a0a0a', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
-              <Search size={20} color="#10b981" />
-              <input 
-                autoFocus type="text" placeholder="What do you want to listen to?" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '18px', fontWeight: '700', paddingLeft: '12px' }}
-              />
-              <div onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} style={{ padding: '4px 8px', background: '#1a1a1a', border: '1px solid #333', borderRadius: '6px', fontSize: '10px', color: '#fff', fontWeight: '800', cursor: 'pointer' }}>
-                ESC
-              </div>
-            </div>
-
-            <div className="bento-scrollbar" style={{ padding: '15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {debouncedQuery === '' ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: '600' }}>Type a song or artist to start searching...</div>
-              ) : (
-                filteredPlaylist.slice(0, 8).map((track) => (
-                  <div 
-                    key={track._id}
-                    onClick={() => { 
-                      setPlaybackContext(filteredPlaylist); 
-                      setActivePlaylistName(userPlaylists.find(p => p._id === selectedPlaylist)?.name || "Playlist");
-                      setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); 
-                      setIsPlaying(true); 
-                      isPlayingFromQueueRef.current = false;
-                      syncPlayback(track._id, 0, selectedPlaylist);
-                    }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '10px 15px', borderRadius: '12px', cursor: 'pointer', transition: '0.2s', backgroundColor: 'transparent' }}
-                    onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#1a1a1a'; e.currentTarget.style.transform = 'translateX(4px)'; }}
-                    onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'translateX(0)'; }}
-                  >
-                    <img src={track.cover || "/Groove.png"} style={{ width: '40px', height: '40px', borderRadius: '8px' }} alt="" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{track.title}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{track.artist}</div>
-                    </div>
-                    <Play size={18} color="#10b981" />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ⚡ NEW COMPONENT: THE EXTRACTED SEARCH MODAL */}
+      <SearchModal 
+        isOpen={isSearchOpen}
+        onClose={closeSearchModal}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        debouncedQuery={debouncedQuery}
+        filteredPlaylist={filteredPlaylist}
+        userPlaylists={userPlaylists}
+        selectedPlaylist={selectedPlaylist}
+      />
 
       {isShortcutHelpOpen && (
         <div 
