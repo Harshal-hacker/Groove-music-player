@@ -366,7 +366,12 @@ export default function MainFeed({
               </div>
 
               {/* RIGHT SIDE: Action Dashboard Control Panel */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 1, paddingLeft: '32px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ 
+                display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 1, 
+                flex: '0 0 clamp(120px, 15cqw, 140px)', 
+                paddingLeft: 'clamp(16px, 3cqw, 32px)', borderLeft: '1px solid rgba(255,255,255,0.05)' 
+              }}>
+                {/* ⚡ OPTIMISTIC UI: Save to Library */}
                 {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
                   <DashboardButton 
                     icon={<Heart size={16} />} 
@@ -375,13 +380,58 @@ export default function MainFeed({
                     onClick={async () => {
                       const userId = currentUser?._id;
                       if (!userId) return alert("Please log in!");
+
+                      const currentPlaylist = userPlaylists.find(p => p._id === selectedPlaylist);
+                      const isCurrentlySaved = currentPlaylist?.followers?.includes(userId);
+
+                      // 1. OPTIMISTIC UPDATE: Update UI instantly
+                      setUserPlaylists(prev => prev.map(p => {
+                        if (p._id === selectedPlaylist) {
+                          const newFollowers = isCurrentlySaved 
+                            ? p.followers.filter(id => id !== userId) 
+                            : [...(p.followers || []), userId];       
+                          return { ...p, followers: newFollowers };
+                        }
+                        return p;
+                      }));
+
+                      if (setToast) {
+                        setToast({ message: isCurrentlySaved ? "Removed from library." : "Added to collection!", type: 'success' });
+                        setTimeout(() => setToast(null), 3000);
+                      }
+
+                      // 2. BACKGROUND SYNC
                       try {
-                        const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }), credentials: 'include' });
+                        const res = await fetch(`${API_BASE_URL}/api/playlists/${selectedPlaylist}/follow`, { 
+                          method: 'PATCH', 
+                          headers: { 'Content-Type': 'application/json' }, 
+                          body: JSON.stringify({ userId }), 
+                          credentials: 'include' 
+                        });
+                        
                         if (res.ok) {
                           const updatedPlaylist = await res.json();
                           setUserPlaylists(prev => prev.map(p => p._id === selectedPlaylist ? updatedPlaylist : p));
+                        } else {
+                          throw new Error("Server rejected");
                         }
-                      } catch (err) {}
+                      } catch (err) {
+                        console.error("Save action failed:", err);
+                        // 3. ROLLBACK IF FAILED
+                        setUserPlaylists(prev => prev.map(p => {
+                          if (p._id === selectedPlaylist) {
+                            const revertedFollowers = isCurrentlySaved 
+                              ? [...(p.followers || []), userId] 
+                              : p.followers.filter(id => id !== userId); 
+                            return { ...p, followers: revertedFollowers };
+                          }
+                          return p;
+                        }));
+                        if (setToast) {
+                          setToast({ message: "Network error. Couldn't save playlist.", type: 'error' });
+                          setTimeout(() => setToast(null), 3000);
+                        }
+                      }
                     }}
                   />
                 )}
@@ -390,47 +440,54 @@ export default function MainFeed({
                     <DashboardButton 
                       icon={<Plus size={16} />} 
                       text="Add Tracks" 
-                      highlight={true}
-                      onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }}
+                      highlight={true} 
+                      onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} 
                     />
                     <DashboardButton 
                       icon={<PenTool size={16} />} 
                       text="Edit Details" 
-                      onClick={openEditModal}
+                      onClick={openEditModal} 
                     />
                   </>
                 )}
 
-                {/* ⚡ NEW: Secondary Action Row (Share, Download, More) */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px', justifyContent: 'space-between', width: '100%' }}>
-                  <CircularIconButton 
-                    icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
-                    success={isCopied}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await navigator.clipboard.writeText(`${window.location.origin}/playlist/${selectedPlaylist}`);
-                        setIsCopied(true);
-                        setTimeout(() => setIsCopied(false), 2000); // Reverts back to Share icon after 2s
+                {/* Secondary Action Row */}
+                {selectedPlaylist && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px', justifyContent: 'space-between', width: '100%' }}>
+                    
+                    <CircularIconButton 
+                      icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
+                      success={isCopied}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await navigator.clipboard.writeText(`${window.location.origin}/playlist/${selectedPlaylist}`);
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000); 
+                          if (setToast) {
+                            setToast({ message: "Link copied to clipboard!", type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          }
+                        } catch (err) {
+                          console.error("Failed to copy", err);
+                        }
+                      }} 
+                    />
+                    
+                    <CircularIconButton 
+                      icon={<Download size={16} />} 
+                      active={isDownloaded}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsDownloaded(!isDownloaded);
                         if (setToast) {
-                          setToast({ message: "Link copied to clipboard!", type: 'success' });
+                          setToast({ message: isDownloaded ? "Removed from downloads." : "Downloading playlist...", type: 'success' });
                           setTimeout(() => setToast(null), 3000);
                         }
-                      } catch (err) {
-                        console.error("Failed to copy", err);
-                      }
-                    }} 
-                  />
-                  <CircularIconButton 
-                    icon={<Download size={16} />} 
-                    active={isDownloaded}
-                    onClick={() => {
-                      setIsDownloaded(!isDownloaded);
-                      setToast({ message: isDownloaded ? "Removed from downloads." : "Downloading playlist...", type: 'success' });
-                      setTimeout(() => setToast(null), 3000);
-                    }} 
-                  />
-                  <CircularIconButton 
+                      }} 
+                    />
+                    
+                    <CircularIconButton 
                       icon={<MoreHorizontal size={16} />} 
                       onClick={(e) => {
                         e.preventDefault();
@@ -439,13 +496,13 @@ export default function MainFeed({
                         const fakeEvent = {
                           preventDefault: () => {},
                           clientX: rect.left,
-                          clientY: rect.bottom + 10 // Opens 10 pixels below the button!
+                          clientY: rect.bottom + 10 
                         };
                         handleContextMenu(fakeEvent, selectedPlaylist, 'playlist', 'header');
                       }} 
                     />
-                </div>
-
+                  </div>
+                )}
               </div>
             </div>
           </div>
