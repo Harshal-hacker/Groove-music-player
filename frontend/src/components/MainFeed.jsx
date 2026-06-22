@@ -143,22 +143,14 @@ export default function MainFeed({
     </button>
   );
 
-  // ⚡ THE FIX: Smart logic to bypass default database Groove.png covers
+  // ⚡ Smart logic to bypass default database Groove.png covers
   const getHeaderCoverImage = () => {
     const currentPl = userPlaylists.find(p => p._id === selectedPlaylist);
     const firstTrackCover = filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : null;
-    
-    // If there is a valid custom cover AND it's NOT the default Groove image
     if (currentPl?.playlistCover && currentPl.playlistCover.trim() !== '' && !currentPl.playlistCover.includes('Groove.png')) {
       return currentPl.playlistCover;
     }
-    
-    // Fallback exactly to the 1st song in the playlist!
-    if (firstTrackCover) {
-      return firstTrackCover;
-    }
-    
-    // Absolute fallback if the playlist is empty
+    if (firstTrackCover) { return firstTrackCover; }
     return "/Groove.png";
   };
 
@@ -189,10 +181,10 @@ export default function MainFeed({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px', color: '#fff', margin: 0 }}>{categoryName}</h3>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => document.getElementById(shelfId).scrollBy({ left: -360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s' }}>
+                      <button onClick={() => document.getElementById(shelfId).scrollBy({ left: -360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }}>
                         <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
                       </button>
-                      <button onClick={() => document.getElementById(shelfId).scrollBy({ left: 360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s' }}>
+                      <button onClick={() => document.getElementById(shelfId).scrollBy({ left: 360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }}>
                         <ChevronRight size={16} />
                       </button>
                     </div>
@@ -201,7 +193,7 @@ export default function MainFeed({
                     {categoryPlaylists.map(pl => {
                       const isFollowed = pl.followers?.includes(currentUser?._id);
                       return (
-                        <div key={pl._id} onClick={() => navigate(`/playlist/${pl._id}`)} onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'home')} className="curated-bento-card" style={{ minWidth: '160px', maxWidth: '160px', cursor: 'pointer', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '16px', border: '1px solid #333', boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative' }}>
+                        <div key={pl._id} onClick={() => navigate(`/playlist/${pl._id}`)} onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'home')} className="curated-bento-card" style={{ minWidth: '160px', maxWidth: '160px', cursor: 'pointer', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '16px', border: '1px solid #333', boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', flexShrink: 0 }}>
                           <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
                             <img src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} onError={(e) => e.target.src = "/Groove.png"} />
                           </div>
@@ -255,7 +247,7 @@ export default function MainFeed({
         </div>
       )}
 
-      {/* 3. PLAYLIST DETAIL VIEW (⚡ THE NEW CINEMATIC DOCK DESIGN ⚡) */}
+      {/* 3. PLAYLIST DETAIL VIEW (⚡ RESPONSIVE SQUISH-PROOF BENTO UI ⚡) */}
       {activeCategory !== 'All' || selectedPlaylist ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           
@@ -265,9 +257,10 @@ export default function MainFeed({
             {/* Atmospheric Background Glow */}
             <div style={{ position: 'absolute', left: '10%', top: '0', width: '60%', height: '100%', background: '#10b981', filter: 'blur(180px)', opacity: 0.08, zIndex: 0, pointerEvents: 'none' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(20px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'nowrap' }}>
+            {/* ⚡ THE FIX: flexWrap: 'wrap' allows the text and dock to drop under the artwork instead of squishing when space runs out */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(16px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'wrap' }}>
               
-              {/* ⚡ THE ARTWORK: Hover to Reveal Cinematic Play Button */}
+              {/* THE ARTWORK */}
               <div 
                 onMouseEnter={() => setIsArtHovered(true)}
                 onMouseLeave={() => setIsArtHovered(false)}
@@ -293,17 +286,14 @@ export default function MainFeed({
                   cursor: 'pointer' 
                 }}
               >
-                {/* ⚡ THE FIX: Using headerCoverImage instead of directly referencing userPlaylists */}
                 <img 
                   src={headerCoverImage} 
                   alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} 
                   style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease', transform: isArtHovered ? 'scale(1.05)' : 'scale(1)' }}
                 />
                 
-                {/* Dark Overlay on Hover */}
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', opacity: isArtHovered ? 1 : 0, transition: 'opacity 0.3s ease' }} />
 
-                {/* Massive Play/Pause Icon Over Artwork */}
                 <div style={{ 
                   position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   opacity: isArtHovered || (isPlaying && currentTrack && filteredPlaylist.some(t => t._id === currentTrack._id)) ? 1 : 0,
@@ -321,7 +311,8 @@ export default function MainFeed({
               </div>
 
               {/* ⚡ TYPOGRAPHY AND FLOATING DOCK */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
+              {/* THE FIX: flex-basis of 280px forces it to wrap to the next line if the width goes below 280px */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 280px', minWidth: 0 }}>
                 
                 <div style={{ fontSize: 'clamp(10px, 1.5cqw, 12px)', fontWeight: '900', color: '#10b981', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
                   {activeCategory === 'Liked' ? 'LIBRARY' : 'COLLECTION'}
@@ -343,12 +334,12 @@ export default function MainFeed({
                   </h1>
                 )}
 
-                <p style={{ color: '#a7a7a7', fontSize: 'clamp(12px, 2cqw, 14px)', fontWeight: '600', margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
-                  <span style={{ color: '#fff', fontWeight: '800' }}>{selectedPlaylist ? 'Groove Audio' : currentUser?.profileName || 'User'}</span>
+                <p style={{ color: '#a7a7a7', fontSize: 'clamp(12px, 2cqw, 14px)', fontWeight: '600', margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', overflow: 'hidden', width: '100%' }}>
+                  <span style={{ color: '#fff', fontWeight: '800', whiteSpace: 'nowrap' }}>{selectedPlaylist ? 'Groove Audio' : currentUser?.profileName || 'User'}</span>
                   <span>•</span>
-                  <span>{filteredPlaylist.length} Tracks</span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{filteredPlaylist.length} Tracks</span>
                   <span>•</span>
-                  <span>
+                  <span style={{ whiteSpace: 'nowrap' }}>
                     {(() => {
                       const totalSeconds = filteredPlaylist.reduce((total, track) => {
                         let sec = 0;
@@ -367,19 +358,18 @@ export default function MainFeed({
                   </span>
                 </p>
 
-                {/* ⚡ THE FLOATING GLASS DOCK (Replaces the rigid right panel) */}
+                {/* THE FLOATING GLASS DOCK (Now with flexWrap to stack buttons gracefully) */}
                 <div style={{ 
                   display: 'flex', alignItems: 'center', gap: '8px', 
                   padding: '6px', background: 'rgba(255,255,255,0.03)', 
-                  border: '1px solid rgba(255,255,255,0.05)', borderRadius: '50px',
-                  backdropFilter: 'blur(10px)', flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%'
+                  border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px',
+                  backdropFilter: 'blur(10px)', flexWrap: 'wrap', maxWidth: '100%'
                 }}>
                   
                   {/* Save to Library */}
                   {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
                     <DockButton 
                       icon={<Heart size={16} fill={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "none"} color={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "currentColor"} />} 
-                      text="Save"
                       active={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id)}
                       onClick={async () => {
                         const userId = currentUser?._id;
@@ -416,7 +406,7 @@ export default function MainFeed({
                   {/* Share, Download, More */}
                   {selectedPlaylist && (
                     <>
-                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 2px', flexShrink: 0 }} />
                       
                       <DockButton 
                         icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
@@ -463,14 +453,15 @@ export default function MainFeed({
                   {/* Admin Actions */}
                   {isAdmin && selectedPlaylist && (
                     <>
-                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
-                      <DockButton icon={<Plus size={16} />} text="Add Tracks" onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} />
-                      <DockButton icon={<PenTool size={16} />} text="Edit" onClick={openEditModal} />
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 2px', flexShrink: 0 }} />
+                      <DockButton icon={<Plus size={16} />} onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} />
+                      <DockButton icon={<PenTool size={16} />} onClick={openEditModal} />
                     </>
                   )}
                   
                 </div>
               </div>
+
             </div>
           </div>
 
@@ -495,6 +486,7 @@ export default function MainFeed({
                 {filteredPlaylist.map((track, index) => {
                   const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
                   return (
+                    /* ⚡ CRITICAL FIX: The minWidth: 0 here ensures long song names truncate with '...' instead of breaking the layout */
                     <div 
                       key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
                       onClick={() => { 
@@ -507,17 +499,48 @@ export default function MainFeed({
                         if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false;
                       }}
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
+                      style={{ 
+                        display: 'flex', alignItems: 'center', gap: '16px', padding: '10px 16px', 
+                        borderRadius: '16px', cursor: 'pointer', transition: 'background-color 0.2s ease', 
+                        backgroundColor: isActive ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                        minWidth: 0 
+                      }}
+                      onMouseOver={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)'; }}
+                      onMouseOut={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >
-                      <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
-                      <img src={track.cover || "/Groove.png"} className="track-thumb" alt="" onError={(e) => { e.target.src = "/Groove.png"; }} />
-                      <div className="track-meta">
-                        <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
-                        <div className="track-artist-sub">{track.artist}</div>
+                      <div style={{ width: '24px', flexShrink: 0, fontSize: '13px', color: '#a7a7a7', fontWeight: '600', textAlign: 'center' }}>
+                        {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : (index + 1).toString().padStart(2, '0')}
                       </div>
-                      <div className="track-time">{formatTime(track.duration)}</div>
-                      <div className="track-action-indicator">
-                        {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : <ChevronRight size={16} color="#333" />}
+                      
+                      <img src={track.cover || "/Groove.png"} alt="" onError={(e) => { e.target.src = "/Groove.png"; }} 
+                        style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} 
+                      />
+                      
+                      <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: isActive ? '#10b981' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
+                        <div style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</div>
                       </div>
+                      
+                      <div style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '500', flexShrink: 0, width: '40px', textAlign: 'right' }}>
+                        {formatTime(track.duration)}
+                      </div>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', flexShrink: 0 }}>
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault(); e.stopPropagation(); 
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const fakeEvent = { preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom + 10 };
+                            handleContextMenu(fakeEvent, track._id, 'song');
+                          }}
+                          style={{ background: 'transparent', border: 'none', color: '#a7a7a7', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                          onMouseOver={(e) => e.currentTarget.style.color = '#fff'}
+                          onMouseOut={(e) => e.currentTarget.style.color = '#a7a7a7'}
+                        >
+                          <MoreHorizontal size={16} />
+                        </button>
+                      </div>
+
                     </div>
                   );
                 })}

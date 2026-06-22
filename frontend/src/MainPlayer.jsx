@@ -12,7 +12,7 @@ import MainFeed from './components/MainFeed';
 import ContextMenu from './components/ContextMenu';
 import TopHeader from './components/TopHeader';
 import RightQueue from './components/RightQueue';
-import SearchModal from './components/SearchModal'; // ⚡ NEW IMPORT
+import SearchModal from './components/SearchModal';
 
 const Admin = lazy(() => import('./Admin'));
 const Profile = lazy(() => import('./components/Profile'));
@@ -20,10 +20,10 @@ const Settings = lazy(() => import('./components/Settings'));
 
 const AppSkeleton = () => (
   <div style={{ backgroundColor: '#000', height: '100vh', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px', boxSizing: 'border-box' }}>
-    <div className="skeleton-pulse" style={{ height: '64px', borderRadius: '16px' }} />
+    <div className="skeleton-pulse" style={{ height: '64px', borderRadius: '24px' }} />
     <div style={{ display: 'flex', flex: 1, gap: '12px' }}>
-      <div className="skeleton-pulse" style={{ width: '260px', borderRadius: '16px' }} />
-      <div className="skeleton-pulse" style={{ flex: 1, borderRadius: '16px' }} />
+      <div className="skeleton-pulse" style={{ width: '320px', borderRadius: '24px' }} />
+      <div className="skeleton-pulse" style={{ flex: 1, borderRadius: '24px' }} />
     </div>
   </div>
 );
@@ -61,20 +61,63 @@ function MainPlayer() {
   const lastContextIndexRef = useRef(0);
   const hasRestoredServerQueue = useRef(false);
   const [userPlaylists, setUserPlaylists] = useState([]);
-  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
   
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   
-  const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [overallProgress, setOverallProgress] = useState(0);
   const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
   const [toast, setToast] = useState(null);
-  const [savedTime, setSavedTime] = useState(0);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+
+  // ⚡ SPOTIFY LOGIC: Smart Space Hierarchy
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1100);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+
+  // 1. Unconditional Resizing Rules (Handles DevTools Opening)
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setWindowWidth(width);
+      
+      if (width < 750) {
+        setIsSidebarCollapsed(true); // Force sidebar to icon mode
+        setIsQueueOpen(false); // Force close queue to save the middle feed
+      } else if (width < 1000) {
+        setIsSidebarCollapsed(true); // Always keep sidebar in icon mode on small screens
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 2. Mutual Exclusion: If you expand the Sidebar, hide the Queue (on medium screens)
+  const toggleSidebar = () => {
+    const willExpand = isSidebarCollapsed;
+    if (willExpand && windowWidth < 1200) {
+      setIsQueueOpen(false); 
+    }
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
+  // 3. Mutual Exclusion: If you open the Queue, collapse the Sidebar (on medium screens)
+  const toggleQueue = () => {
+    const willOpen = !isQueueOpen;
+    if (willOpen && windowWidth < 1200) {
+      setIsSidebarCollapsed(true); 
+    }
+    setIsQueueOpen(!isQueueOpen);
+  };
+
+  const closeSearchModal = () => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setDebouncedQuery('');
+  };
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/songs`, { credentials: 'include' })
@@ -153,7 +196,7 @@ function MainPlayer() {
       hasRestoredServerQueue.current = true; 
     }
   }, [userPlaylists, currentUser, setActivePlaylistName, setPlaybackContext, setPlayingPlaylistId]);
-  
+
   useEffect(() => {
     if (contextMenu) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'auto';
@@ -175,30 +218,15 @@ function MainPlayer() {
   }, [searchQuery]);
 
   useEffect(() => {
-    const handleGlobalContextMenu = (e) => {
-      e.preventDefault();
-    };
-
+    const handleGlobalContextMenu = (e) => { e.preventDefault(); };
     window.addEventListener('contextmenu', handleGlobalContextMenu);
     return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
   }, []);
 
-  // ⚡ DEDICATED SEARCH CLOSE HANDLER
-  const closeSearchModal = () => {
-    setIsSearchOpen(false);
-    setSearchQuery('');
-    setDebouncedQuery('');
-  };
-
   useEffect(() => {
     const handleGlobalShortcuts = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setIsSearchOpen(true); return; }
-      
-      if (e.key === 'Escape') { 
-        closeSearchModal();
-        setIsShortcutHelpOpen(false); 
-      }
-      
+      if (e.key === 'Escape') { closeSearchModal(); setIsShortcutHelpOpen(false); }
       if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); setIsShortcutHelpOpen(prev => !prev); return; }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return; 
       if (e.code === 'Space' || e.code === 'MediaPlayPause') { e.preventDefault(); togglePlayPause(); }
@@ -312,6 +340,33 @@ function MainPlayer() {
     }
   };
 
+  const handleContextMenu = (e, id, type = 'song', source = 'general') => {
+    e.preventDefault();
+    const menuWidth = 220; const menuHeight = (type === 'song' && isAdmin) ? 380 : 320; 
+    let x = e.clientX; let y = e.clientY;
+    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 15; 
+    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 15; 
+    setContextMenu({ x, y, id, type, source, alignLeft: e.clientX + (menuWidth * 2) > window.innerWidth });
+  };
+
+  const handleCreatePlaylistInline = async () => {
+    const userId = currentUser?._id;
+    if (!userId) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/playlists`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: "New Playlist", createdBy: userId, songIds: [] }), credentials: 'include'
+      });
+      if (response.ok) {
+        const newPlaylist = await response.json();
+        setUserPlaylists(prev => [...prev, newPlaylist]);
+        setSelectedPlaylist(newPlaylist._id); setActiveCategory('All');
+        setTempName("New Playlist"); setIsEditingName(true); setIsPlaylistModalOpen(false); 
+        if(isSidebarCollapsed) toggleSidebar(); 
+      }
+    } catch (err) { console.error("Create failed:", err); }
+  };
+
   const deletePlaylist = (id) => {
     setConfirmDialog({
       isOpen: true, title: "Delete Playlist", message: "Are you sure you want to remove this playlist? This action cannot be undone.",
@@ -328,23 +383,6 @@ function MainPlayer() {
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
       }
     });
-  };
-
-  const handleCreatePlaylistInline = async () => {
-    const userId = currentUser?._id;
-    if (!userId) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/playlists`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: "New Playlist", createdBy: userId, songIds: [] }), credentials: 'include'
-      });
-      if (response.ok) {
-        const newPlaylist = await response.json();
-        setUserPlaylists(prev => [...prev, newPlaylist]);
-        setSelectedPlaylist(newPlaylist._id); setActiveCategory('All');
-        setTempName("New Playlist"); setIsEditingName(true); setIsPlaylistModalOpen(false); 
-      }
-    } catch (err) { console.error("Create failed:", err); }
   };
 
   const handleDelete = (id) => {
@@ -387,15 +425,6 @@ function MainPlayer() {
     } catch (err) { setUserData(prev => ({ ...prev, likedSongs: previousLikes })); }
   };
 
-  const handleContextMenu = (e, id, type = 'song', source = 'general') => {
-    e.preventDefault();
-    const menuWidth = 220; const menuHeight = (type === 'song' && isAdmin) ? 380 : 320; 
-    let x = e.clientX; let y = e.clientY;
-    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 15; 
-    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 15; 
-    setContextMenu({ x, y, id, type, source, alignLeft: e.clientX + (menuWidth * 2) > window.innerWidth });
-  };
-
   const handleAddToPlaylist = async (songId, playlistId) => {
     const previousPlaylists = [...userPlaylists];
     setUserPlaylists(prev => prev.map(pl => pl._id === playlistId ? { ...pl, songIds: [...pl.songIds, songId] } : pl));
@@ -428,15 +457,6 @@ function MainPlayer() {
   const readyMadePlaylists = userPlaylists.filter(pl => pl.isReadyMade === true);
 
   if (isLoading || isAuthLoading) return <AppSkeleton />; 
-  if (error) return <div className="spotify-container loading-screen" style={{ backgroundColor: '#000' }}><h2 style={{ color: '#fff' }}>{error}</h2></div>;
-
-  if (showAdmin) {
-    return (
-      <Suspense fallback={<AppSkeleton />}>
-        <Admin onBack={() => setShowAdmin(false)} uploadProgress={uploadProgress} setUploadProgress={setUploadProgress} isUploading={isUploading} setIsUploading={setIsUploading} setOverallProgress={setOverallProgress} setUploadStats={setUploadStats} setPlaylist={setPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} />
-      </Suspense>
-    );
-  }
 
   return (
     <div className="bento-shell" style={{ backgroundColor: '#000', height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', padding: '12px', gap: '12px', boxSizing: 'border-box', overflow: 'hidden', color: '#fff', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -447,14 +467,20 @@ function MainPlayer() {
       />
 
       <div style={{ display: 'flex', flex: 1, width: '100%', gap: '12px', overflow: 'hidden', boxSizing: 'border-box' }}>
+        
         <Sidebar 
           isAuthenticated={isAuthenticated} isAdmin={isAdmin} setShowAdmin={setShowAdmin} handleCreatePlaylistInline={handleCreatePlaylistInline}
           activeCategory={activeCategory} setActiveCategory={setActiveCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist}
           userPlaylists={userPlaylists} handleContextMenu={handleContextMenu}
+          isCollapsed={isSidebarCollapsed} 
+          toggleSidebar={toggleSidebar} 
         />
 
+        {/* ⚡ THE MAIN FEED (CRITICAL FIX: minWidth is now 0 so it squishes perfectly instead of breaking) */}
         <AnimatePresence mode="wait">
-          <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} style={{ flex: 1, minWidth: 0, width: '100%', display: 'flex', overflow: 'hidden' }}>
+          <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} 
+            style={{ flex: 1, minWidth: 0, display: 'flex', overflow: 'hidden' }} 
+          >
             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
               {location.pathname === '/profile' ? <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
                : location.pathname === '/settings' ? <Settings handleLogout={handleLogout} /> 
@@ -466,7 +492,7 @@ function MainPlayer() {
         {isQueueOpen && (
           <RightQueue 
             isQueueOpen={isQueueOpen} 
-            setIsQueueOpen={setIsQueueOpen} 
+            setIsQueueOpen={toggleQueue} 
             lastContextIndexRef={lastContextIndexRef} 
             playlist={playlist} 
             handleContextMenu={handleContextMenu} 
@@ -475,7 +501,18 @@ function MainPlayer() {
         )}
       </div>
 
-      <PlayerDeck isQueueOpen={isQueueOpen} setIsQueueOpen={setIsQueueOpen} />
+      <PlayerDeck isQueueOpen={isQueueOpen} setIsQueueOpen={toggleQueue} /> 
+
+      <SearchModal 
+        isOpen={isSearchOpen}
+        onClose={closeSearchModal}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        debouncedQuery={debouncedQuery}
+        filteredPlaylist={filteredPlaylist}
+        userPlaylists={userPlaylists}
+        selectedPlaylist={selectedPlaylist}
+      />
 
       <ContextMenu 
         menu={contextMenu} 
@@ -532,18 +569,6 @@ function MainPlayer() {
           </div>
         </div>
       )}
-
-      {/* ⚡ NEW COMPONENT: THE EXTRACTED SEARCH MODAL */}
-      <SearchModal 
-        isOpen={isSearchOpen}
-        onClose={closeSearchModal}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        debouncedQuery={debouncedQuery}
-        filteredPlaylist={filteredPlaylist}
-        userPlaylists={userPlaylists}
-        selectedPlaylist={selectedPlaylist}
-      />
 
       {isShortcutHelpOpen && (
         <div 
