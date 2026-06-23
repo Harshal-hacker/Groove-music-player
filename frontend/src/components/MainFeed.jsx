@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Pause, ChevronRight, ListMusic, Search, Settings, Heart, Plus, CheckCircle2, MoreHorizontal, PenTool, X, Share2, Download } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { useNavigate } from 'react-router-dom';
@@ -40,8 +40,25 @@ export default function MainFeed({
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   
-  // Hover state for the artwork play button
   const [isArtHovered, setIsArtHovered] = useState(false);
+
+  // ⚡ PERFORMANCE OPTIMIZATION: Track limit state for Infinite Scroll
+  const [visibleTracksCount, setVisibleTracksCount] = useState(30);
+
+  // Reset infinite scroll limits whenever a user changes playlists or searches
+  useEffect(() => {
+    setVisibleTracksCount(30);
+  }, [selectedPlaylist, activeCategory, debouncedQuery]);
+
+  // ⚡ PERFORMANCE OPTIMIZATION: Infinite Scroll listener
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 100) {
+      if (visibleTracksCount < filteredPlaylist.length) {
+        setVisibleTracksCount((prev) => prev + 20);
+      }
+    }
+  };
 
   const formatTime = (time) => {
     if (time && !isNaN(time)) {
@@ -110,7 +127,6 @@ export default function MainFeed({
     } catch (error) { console.error("Edit failed:", error); }
   };
 
-  // ⚡ THE NEW FLOATING DOCK BUTTON
   const DockButton = ({ icon, text, onClick, active, success }) => (
     <button
       onClick={onClick}
@@ -143,7 +159,6 @@ export default function MainFeed({
     </button>
   );
 
-  // ⚡ Smart logic to bypass default database Groove.png covers
   const getHeaderCoverImage = () => {
     const currentPl = userPlaylists.find(p => p._id === selectedPlaylist);
     const firstTrackCover = filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : null;
@@ -156,9 +171,13 @@ export default function MainFeed({
 
   const headerCoverImage = getHeaderCoverImage();
 
+  // ⚡ PERFORMANCE OPTIMIZATION: Slice the array down to what is visible right now
+  const visibleTracks = filteredPlaylist.slice(0, visibleTracksCount);
+
   return (
     <main 
       className="bento-scrollbar"
+      onScroll={handleScroll} 
       style={{ 
         flex: 1, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', 
         overflowY: 'auto', overflowX: 'hidden', backgroundColor: '#121212', 
@@ -195,7 +214,8 @@ export default function MainFeed({
                       return (
                         <div key={pl._id} onClick={() => navigate(`/playlist/${pl._id}`)} onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'home')} className="curated-bento-card" style={{ minWidth: '160px', maxWidth: '160px', cursor: 'pointer', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '16px', border: '1px solid #333', boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', flexShrink: 0 }}>
                           <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
-                            <img src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} onError={(e) => e.target.src = "/Groove.png"} />
+                            {/* ⚡ LAZY LOADING */}
+                            <img src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} onError={(e) => e.target.src = "/Groove.png"} loading="lazy" />
                           </div>
                           <div style={{ padding: '0 2px' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: '700', margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pl.name}</h4>
@@ -229,7 +249,8 @@ export default function MainFeed({
               return (
                 <div key={track._id} className={`advanced-music-card ${isActive ? 'active' : ''}`} onClick={() => { setPlaybackContext(filteredPlaylist); setSelectedPlaylist(selectedPlaylist); setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); setIsPlaying(true); syncPlayback(track._id, 0, selectedPlaylist); if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false; }} onContextMenu={(e) => handleContextMenu(e, track._id, 'song')} style={{ cursor: 'pointer', padding: '16px', borderRadius: '20px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', backgroundColor: isActive ? '#1a1a1a' : '#0a0a0a', border: isActive ? '1px solid #10b981' : '1px solid #333' }}>
                   <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', aspectRatio: '1/1', boxShadow: '0 12px 24px rgba(0,0,0,0.3)', marginBottom: '16px' }}>
-                    <img src={track.cover} alt={track.title} onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} className="card-img" />
+                    {/* ⚡ LAZY LOADING */}
+                    <img src={track.cover} alt={track.title} onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} className="card-img" loading="lazy" />
                     <div className="card-overlay" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0, transition: '0.3s ease', backdropFilter: 'blur(4px)' }}>
                       <div style={{ width: '48px', height: '48px', backgroundColor: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 15px rgba(16, 185, 129, 0.4)' }}>
                         {isActive ? <Pause size={24} fill="white" color="white" /> : <Play size={24} fill="white" color="white" style={{marginLeft: '3px'}} />}
@@ -247,20 +268,17 @@ export default function MainFeed({
         </div>
       )}
 
-      {/* 3. PLAYLIST DETAIL VIEW (⚡ RESPONSIVE SQUISH-PROOF BENTO UI ⚡) */}
+      {/* 3. PLAYLIST DETAIL VIEW */}
       {activeCategory !== 'All' || selectedPlaylist ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           
-          {/* THE HEADER CONTAINER */}
           <div style={{ position: 'relative', padding: 'clamp(24px, 5cqw, 40px)', containerType: 'inline-size', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             
-            {/* Atmospheric Background Glow */}
             <div style={{ position: 'absolute', left: '10%', top: '0', width: '60%', height: '100%', background: '#10b981', filter: 'blur(180px)', opacity: 0.08, zIndex: 0, pointerEvents: 'none' }} />
 
-            {/* ⚡ THE FIX: flexWrap: 'wrap' allows the text and dock to drop under the artwork instead of squishing when space runs out */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(16px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'wrap' }}>
+            {/* ⚡ THE FIX: flexWrap: 'nowrap' restores your exact side-by-side Layout! */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(20px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'nowrap' }}>
               
-              {/* THE ARTWORK */}
               <div 
                 onMouseEnter={() => setIsArtHovered(true)}
                 onMouseLeave={() => setIsArtHovered(false)}
@@ -310,9 +328,8 @@ export default function MainFeed({
                 </div>
               </div>
 
-              {/* ⚡ TYPOGRAPHY AND FLOATING DOCK */}
-              {/* THE FIX: flex-basis of 280px forces it to wrap to the next line if the width goes below 280px */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 280px', minWidth: 0 }}>
+              {/* ⚡ TEXT CONTAINER: flex: '1 1 0%' ensures it shrinks instead of pushing off screen */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
                 
                 <div style={{ fontSize: 'clamp(10px, 1.5cqw, 12px)', fontWeight: '900', color: '#10b981', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
                   {activeCategory === 'Liked' ? 'LIBRARY' : 'COLLECTION'}
@@ -334,7 +351,7 @@ export default function MainFeed({
                   </h1>
                 )}
 
-                <p style={{ color: '#a7a7a7', fontSize: 'clamp(12px, 2cqw, 14px)', fontWeight: '600', margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', overflow: 'hidden', width: '100%' }}>
+                <p style={{ color: '#a7a7a7', fontSize: 'clamp(12px, 2cqw, 14px)', fontWeight: '600', margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
                   <span style={{ color: '#fff', fontWeight: '800', whiteSpace: 'nowrap' }}>{selectedPlaylist ? 'Groove Audio' : currentUser?.profileName || 'User'}</span>
                   <span>•</span>
                   <span style={{ whiteSpace: 'nowrap' }}>{filteredPlaylist.length} Tracks</span>
@@ -358,15 +375,14 @@ export default function MainFeed({
                   </span>
                 </p>
 
-                {/* THE FLOATING GLASS DOCK (Now with flexWrap to stack buttons gracefully) */}
+                {/* THE FLOATING GLASS DOCK */}
                 <div style={{ 
                   display: 'flex', alignItems: 'center', gap: '8px', 
                   padding: '6px', background: 'rgba(255,255,255,0.03)', 
-                  border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px',
-                  backdropFilter: 'blur(10px)', flexWrap: 'wrap', maxWidth: '100%'
+                  border: '1px solid rgba(255,255,255,0.05)', borderRadius: '50px',
+                  backdropFilter: 'blur(10px)', flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%'
                 }}>
                   
-                  {/* Save to Library */}
                   {selectedPlaylist && userPlaylists.find(p => p._id === selectedPlaylist)?.isReadyMade && (
                     <DockButton 
                       icon={<Heart size={16} fill={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "none"} color={userPlaylists.find(p => p._id === selectedPlaylist)?.followers?.includes(currentUser?._id) ? "#10b981" : "currentColor"} />} 
@@ -378,7 +394,6 @@ export default function MainFeed({
                         const currentPlaylist = userPlaylists.find(p => p._id === selectedPlaylist);
                         const isCurrentlySaved = currentPlaylist?.followers?.includes(userId);
 
-                        // Optimistic Update
                         setUserPlaylists(prev => prev.map(p => {
                           if (p._id === selectedPlaylist) {
                             const newFollowers = isCurrentlySaved ? p.followers.filter(id => id !== userId) : [...(p.followers || []), userId];       
@@ -403,10 +418,9 @@ export default function MainFeed({
                     />
                   )}
 
-                  {/* Share, Download, More */}
                   {selectedPlaylist && (
                     <>
-                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 2px', flexShrink: 0 }} />
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px', flexShrink: 0 }} />
                       
                       <DockButton 
                         icon={isCopied ? <CheckCircle2 size={16} /> : <Share2 size={16} />} 
@@ -450,10 +464,9 @@ export default function MainFeed({
                     </>
                   )}
 
-                  {/* Admin Actions */}
                   {isAdmin && selectedPlaylist && (
                     <>
-                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 2px', flexShrink: 0 }} />
+                      <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px', flexShrink: 0 }} />
                       <DockButton icon={<Plus size={16} />} onClick={() => { setAddTrackSearch(''); setShowAddTrackModal(true); }} />
                       <DockButton icon={<PenTool size={16} />} onClick={openEditModal} />
                     </>
@@ -483,12 +496,13 @@ export default function MainFeed({
               </div>
             ) : (
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '8px' }}>
-                {filteredPlaylist.map((track, index) => {
+                
+                {/* ⚡ PERFORMANCE OPTIMIZATION: Render visibleTracks instead of filteredPlaylist */}
+                {visibleTracks.map((track, index) => {
                   const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
                   return (
-                    /* ⚡ CRITICAL FIX: The minWidth: 0 here ensures long song names truncate with '...' instead of breaking the layout */
                     <div 
-                      key={`${track._id}-${index}`} className={`groove-track-card ${isActive ? 'active' : ''}`}
+                      key={`${track._id}-${index}`} 
                       onClick={() => { 
                         setPlaybackContext(filteredPlaylist); 
                         setActivePlaylistName(getContextName());
@@ -501,7 +515,7 @@ export default function MainFeed({
                       onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
                       style={{ 
                         display: 'flex', alignItems: 'center', gap: '16px', padding: '10px 16px', 
-                        borderRadius: '16px', cursor: 'pointer', transition: 'background-color 0.2s ease', 
+                        borderRadius: '16px', cursor: 'pointer', transition: 'background 0.2s ease', 
                         backgroundColor: isActive ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
                         minWidth: 0 
                       }}
@@ -512,8 +526,10 @@ export default function MainFeed({
                         {isActive && isPlaying ? <div className="groove-visualizer"><span></span><span></span><span></span></div> : (index + 1).toString().padStart(2, '0')}
                       </div>
                       
+                      {/* ⚡ LAZY LOADING ADDED HERE */}
                       <img src={track.cover || "/Groove.png"} alt="" onError={(e) => { e.target.src = "/Groove.png"; }} 
                         style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} 
+                        loading="lazy"
                       />
                       
                       <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -596,9 +612,11 @@ export default function MainFeed({
                     <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '12px', marginBottom: '4px', transition: 'all 0.2s', backgroundColor: 'transparent' }} onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', overflow: 'hidden' }}>
+                        {/* ⚡ LAZY LOADING ADDED HERE */}
                         <img 
                           src={song.cover || "/Groove.png"} alt="" 
                           style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, opacity: isAlreadyAdded ? 0.5 : 1 }} 
+                          loading="lazy"
                         />
                         <div style={{ overflow: 'hidden' }}>
                           <div style={{ fontSize: '14px', fontWeight: '700', color: isAlreadyAdded ? '#a7a7a7' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
