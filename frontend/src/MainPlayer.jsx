@@ -482,9 +482,24 @@ function MainPlayer() {
             style={{ flex: 1, minWidth: 0, display: 'flex', overflow: 'hidden' }} 
           >
             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
-              {location.pathname === '/profile' ? <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
-               : location.pathname === '/settings' ? <Settings handleLogout={handleLogout} /> 
-               : <MainFeed activeCategory={activeCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist} debouncedQuery={debouncedQuery} userPlaylists={userPlaylists} setUserPlaylists={setUserPlaylists} filteredPlaylist={filteredPlaylist} readyMadePlaylists={readyMadePlaylists} handleContextMenu={handleContextMenu} handleAddToPlaylist={handleAddToPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} isAdmin={isAdmin} setToast={setToast} />}
+              {showAdmin ? (
+                <Admin 
+                  onBack={() => setShowAdmin(false)}
+                  uploadProgress={uploadProgress}
+                  setUploadProgress={setUploadProgress}
+                  isUploading={isUploading}
+                  setIsUploading={setIsUploading}
+                  setOverallProgress={setOverallProgress}
+                  setUploadStats={setUploadStats}
+                  setPlaylist={setPlaylist}
+                />
+              ) : location.pathname === '/profile' ? (
+                <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
+              ) : location.pathname === '/settings' ? (
+                <Settings handleLogout={handleLogout} /> 
+              ) : (
+                <MainFeed activeCategory={activeCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist} debouncedQuery={debouncedQuery} userPlaylists={userPlaylists} setUserPlaylists={setUserPlaylists} filteredPlaylist={filteredPlaylist} readyMadePlaylists={readyMadePlaylists} handleContextMenu={handleContextMenu} handleAddToPlaylist={handleAddToPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} isAdmin={isAdmin} setToast={setToast} />
+              )}
             </Suspense>
           </motion.div>
         </AnimatePresence>

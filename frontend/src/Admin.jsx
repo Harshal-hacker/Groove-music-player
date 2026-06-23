@@ -102,6 +102,7 @@ function Admin({
     formData.append('title', songData.title);
     formData.append('artist', songData.artist);
     formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
+    formData.append('duration', songData.duration);
     
     if (audioFile) formData.append('audio', audioFile);
     if (coverFile) formData.append('cover', coverFile);
@@ -170,21 +171,31 @@ function Admin({
     
     const extractMetadata = (file) => {
       return new Promise((resolve) => {
-        jsmediatags.read(file, {
-          onSuccess: (tag) => {
-            const title = tag.tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
-            const artist = tag.tags.artist || "Unknown Artist";
-            let coverBlobFile = null;
-            if (tag.tags.picture) {
-              const { data, format } = tag.tags.picture;
-              coverBlobFile = new File([new Blob([new Uint8Array(data)], { type: format })], `cover-${Date.now()}.jpg`, { type: format });
+        // ⚡ 1. Wrap it in the native audio reader to get the duration!
+        const tempAudio = new Audio(URL.createObjectURL(file));
+        
+        tempAudio.onloadedmetadata = () => {
+          const duration = tempAudio.duration;
+          
+          jsmediatags.read(file, {
+            onSuccess: (tag) => {
+              const title = tag.tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
+              const artist = tag.tags.artist || "Unknown Artist";
+              let coverBlobFile = null;
+              if (tag.tags.picture) {
+                const { data, format } = tag.tags.picture;
+                coverBlobFile = new File([new Blob([new Uint8Array(data)], { type: format })], `cover-${Date.now()}.jpg`, { type: format });
+              }
+              // ⚡ 2. Make sure duration is passed back out
+              resolve({ title, artist, coverFile: coverBlobFile, duration }); 
+            },
+            onError: () => {
+              resolve({ title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""), artist: "Unknown Artist", coverFile: null, duration });
             }
-            resolve({ title, artist, coverFile: coverBlobFile });
-          },
-          onError: () => {
-            resolve({ title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""), artist: "Unknown Artist", coverFile: null });
-          }
-        });
+          });
+        };
+        
+        tempAudio.onerror = () => resolve({ title: file.name, artist: "Unknown", coverFile: null, duration: 0 });
       });
     };
 
@@ -208,6 +219,7 @@ function Admin({
           formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
           formData.append('title', metadata.title);
           formData.append('artist', metadata.artist);
+          formData.append('duration', metadata.duration);
           if (metadata.coverFile) formData.append('cover', metadata.coverFile);
 
           // We await THIS specific upload before moving to the next loop iteration
