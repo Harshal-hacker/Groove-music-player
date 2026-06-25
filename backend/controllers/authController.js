@@ -15,6 +15,8 @@ const sendAuthCookie = (res, user) => {
     sameSite: 'none',
     maxAge: 7 * 24 * 60 * 60 * 1000
   });
+
+  return token;
 };
 
 // Configuration for Mailer
@@ -53,8 +55,16 @@ exports.signup = async (req, res) => {
     const newUser = new User({ email, password: hashedPassword, profileName, dob, gender });
     await newUser.save();
     
-    sendAuthCookie(res, newUser);
-    res.status(201).json({ userId: newUser._id, role: newUser.role, message: "Account created successfully!" });
+    // ⚡ Capture the token here
+    const token = sendAuthCookie(res, newUser);
+    
+    // ⚡ Add the token to the JSON response
+    res.status(201).json({ 
+      userId: newUser._id, 
+      role: newUser.role, 
+      token: token, 
+      message: "Account created successfully!" 
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error during sign up." });
   }
@@ -69,8 +79,16 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: "Invalid Email or Password" });
 
-    sendAuthCookie(res, user);
-    res.status(200).json({ message: "Login successful", userId: user._id, role: user.role });
+    // ⚡ Capture the token here
+    const token = sendAuthCookie(res, user);
+    
+    // ⚡ Add the token to the JSON response
+    res.status(200).json({ 
+      message: "Login successful", 
+      userId: user._id, 
+      role: user.role, 
+      token: token 
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error during login" });
   }
