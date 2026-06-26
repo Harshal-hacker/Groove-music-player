@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const { verifyToken } = require('../middleware/authMiddleware');
+const { requestMagicLink, verifyMagicLink } = require('../controllers/authController');
 const rateLimit = require('express-rate-limit');
 
 // ⚡ NEW IMPORTS REQUIRED FOR CHECK-EMAIL & GOOGLE AUTH
@@ -11,6 +12,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 // Initialize Google Client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 const forgotPasswordLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, 
@@ -33,6 +35,8 @@ router.get('/me', verifyToken, authController.getMe);
 router.post('/logout', authController.logout);
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
+router.post('/magic-link/request', requestMagicLink);
+router.post('/magic-link/verify', verifyMagicLink);
 router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPassword);
 router.patch('/reset-password', resetPasswordLimiter, authController.resetPassword);
 router.patch('/sync-playback', verifyToken, authController.syncPlayback);

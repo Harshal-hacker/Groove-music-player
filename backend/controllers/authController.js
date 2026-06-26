@@ -181,3 +181,72 @@ exports.syncPlayback = async (req, res) => {
     res.status(200).json({ message: "Synced" });
   } catch (err) { res.status(500).json({ error: "Failed" }); }
 };
+
+// 1. GENERATE AND SEND THE OTP
+exports.requestMagicLink = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    
+    // Security Best Practice: Always send the same success message 
+    // even if the user doesn't exist. This prevents hackers from guessing emails.
+    if (!user) return res.status(200).json({ message: "If an account exists, a code has been sent." });
+
+    // Generate a random 6-digit code (e.g., 492019)
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Save it to the database, set to expire in 15 minutes
+    user.magicLinkOtp = otp;
+    user.magicLinkOtpExpires = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    // Email it using the transporter you already configured!
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: 'Groove - Your Login Code',
+      text: `Welcome back to the studio.\n\nYour one-time login code is: ${otp}\n\nThis code expires in 15 minutes. If you didn't request this, please ignore this email.`
+    };
+
+    transporter.sendMail(mailOptions, (error) => {
+      if (error) return res.status(500).json({ message: "Failed to send email." });
+      res.status(200).json({ message: "If an account exists, a code has been sent." });
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+// 2. VERIFY THE OTP AND LOG THEM IN
+exports.verifyMagicLink = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    // Find the user with that exact email, that exact code, AND ensure it hasn't expired
+    const user = await User.findOne({ 
+      email: email, 
+      magicLinkOtp: otp, 
+      magicLinkOtpExpires: { $gt: Date.now() } 
+    });
+
+    if (!user) return res.status(400).json({ message: "Invalid or expired code." });
+
+    // The code was correct! Clear the OTP fields so it can't be used again.
+    user.magicLinkOtp = null;
+    user.magicLinkOtpExpires = null;
+    await user.save();
+
+    // Use your existing helper function to set the cookie and generate the token!
+    const token = sendAuthCookie(res, user);
+    
+    res.status(200).json({ 
+      message: "Login successful", 
+      userId: user._id, 
+      role: user.role, 
+      token: token 
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error during verification" });
+  }
+};
