@@ -7,15 +7,15 @@ import { useGoogleLogin } from '@react-oauth/google';
 
 function Login() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1); // ⚡ NEW: State for 2-step flow
+  const [step, setStep] = useState(1);
+  const [otp, setOtp] = useState('');
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState(''); // ⚡ NEW: Email validation error
+  const [emailError, setEmailError] = useState('');
   
   const { setCurrentUser } = usePlayer();
 
-  // ⚡ NEW: Advance to Password Step
   const handleEmailNext = (e) => {
     e.preventDefault();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,8 +65,60 @@ function Login() {
     }
   };
 
-  const handleMagicLink = () => {
-    alert(`If an account exists, a secure login link has been sent to ${formData.email}.`);
+  const handleRequestMagicLink = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/magic-link/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setStep(3);
+      } else {
+        alert(data.message || "Failed to send code");
+      }
+    } catch (err) {
+      alert("Failed to connect to server.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/magic-link/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, otp }),
+        credentials: 'include' 
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const profileResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: 'include' });
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          setCurrentUser(profileData.user);
+        } else {
+          setCurrentUser({ _id: data.userId, email: formData.email, role: data.role });
+        }
+        navigate('/'); 
+      } else {
+        alert(data.message || "Invalid or expired code");
+      }
+    } catch (err) {
+      alert("Failed to verify code.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const loginWithGoogle = useGoogleLogin({
@@ -93,9 +145,8 @@ function Login() {
   return (
     <div className="split-auth-container" style={{ height: '100vh', width: '100vw', display: 'flex', background: '#000', color: '#fff', position: 'relative' }}>
       
-      {/* ⚡ UPDATED: Dynamic Back Button */}
       <button 
-        onClick={() => step === 2 ? setStep(1) : navigate('/')}
+        onClick={() => step > 1 ? setStep(step - 1) : navigate('/')}
         style={{ 
           position: 'absolute', top: '30px', left: '30px', zIndex: 100, 
           background: '#121212', border: '1px solid #222', 
@@ -107,7 +158,7 @@ function Login() {
         onMouseOut={(e) => e.currentTarget.style.background = '#121212'}
       >
         <ArrowLeft size={18} /> 
-        <span className="mobile-hide">{step === 2 ? "GO BACK" : "BACK TO GROOVE"}</span>
+        <span className="mobile-hide">{step > 1 ? "GO BACK" : "BACK TO GROOVE"}</span>
       </button>
 
       <div className="auth-visual-side" style={{ flex: 1.2, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end', padding: '60px' }}>
@@ -130,7 +181,7 @@ function Login() {
         }}>
           
           <div style={{ marginBottom: '25px' }}>
-            <h1 style={{ fontSize: '32px', fontWeight: '900', margin: '0 0 12px 0' }}>Log in</h1>
+            <h1 style={{ fontSize: '32px', fontWeight: '900', margin: '0 0 12px 0' }}>{step === 3 ? "Enter Code" : "Log in"}</h1>
             <div style={{ height: '4px', width: '100%', background: '#10b981', borderRadius: '4px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)' }}></div>
           </div>
 
@@ -204,7 +255,6 @@ function Login() {
           {step === 2 && (
             <div style={{ animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
               
-              {/* ⚡ NEW: Email Verification Badge */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', background: '#181818', border: '1px solid #333', borderRadius: '12px', marginBottom: '20px' }}>
                 <span style={{ color: '#fff', fontSize: '14px', fontWeight: '600' }}>{formData.email}</span>
                 <button 
@@ -270,10 +320,9 @@ function Login() {
                   {isSubmitting ? <Loader2 className="spinner" size={20} /> : "Log In"}
                 </button>
 
-                {/* ⚡ NEW: Magic Link Button */}
                 <button 
                   type="button"
-                  onClick={handleMagicLink}
+                  onClick={handleRequestMagicLink}
                   style={{ 
                     padding: '16px', borderRadius: '50px', background: 'transparent', color: '#fff', 
                     border: '1px solid #333', fontWeight: '800', cursor: 'pointer', 
@@ -283,6 +332,55 @@ function Login() {
                   onMouseOut={(e) => e.currentTarget.style.borderColor = '#333'}
                 >
                   Log in without a password
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* ================= STEP 3: OTP VERIFICATION ================= */}
+          {step === 3 && (
+            <div style={{ animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: '800' }}>Check your email</h3>
+                <p style={{ color: '#64748b', fontSize: '14px' }}>We sent a 6-digit code to <strong style={{ color: '#fff'}}>{formData.email}</strong></p>
+              </div>
+
+              <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <input 
+                    type="text" 
+                    required 
+                    maxLength={6}
+                    autoFocus
+                    value={otp} 
+                    onChange={(e) => setOtp(e.target.value)} 
+                    style={{ 
+                      width: '100%', padding: '20px', background: '#0a0a0a', border: '1px solid #333', 
+                      borderRadius: '12px', color: '#fff', outline: 'none', fontSize: '32px', 
+                      fontWeight: '900', textAlign: 'center', letterSpacing: '10px', transition: '0.3s ease' 
+                    }} 
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting || otp.length < 6} 
+                  style={{ 
+                    padding: '18px', borderRadius: '50px', background: '#10b981', color: '#000', 
+                    border: 'none', fontWeight: '900', cursor: otp.length === 6 ? 'pointer' : 'not-allowed', 
+                    fontSize: '15px', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: otp.length === 6 ? 1 : 0.5, transition: '0.3s'
+                  }}
+                >
+                  {isSubmitting ? <Loader2 className="spinner" size={20} /> : "Verify & Log In"}
+                </button>
+                
+                <button 
+                  type="button"
+                  onClick={handleRequestMagicLink}
+                  style={{ background: 'none', border: 'none', color: '#64748b', fontWeight: '700', fontSize: '13px', cursor: 'pointer', marginTop: '10px' }}
+                >
+                  Didn't receive it? <span style={{ color: '#10b981' }}>Resend code</span>
                 </button>
               </form>
             </div>

@@ -200,18 +200,23 @@ exports.requestMagicLink = async (req, res) => {
     user.magicLinkOtpExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    // Email it using the transporter you already configured!
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: user.email,
       subject: 'Groove - Your Login Code',
-      text: `Welcome back to the studio.\n\nYour one-time login code is: ${otp}\n\nThis code expires in 15 minutes. If you didn't request this, please ignore this email.`
+      text: `Welcome back to the studio.\n\nYour one-time login code is: ${otp}\n\nThis code expires in 15 minutes.`
     };
 
+    // ⚡ THE FIX: "Fire and Forget"
+    // 1. We tell Node to start sending the email in the background...
     transporter.sendMail(mailOptions, (error) => {
-      if (error) return res.status(500).json({ message: "Failed to send email." });
-      res.status(200).json({ message: "If an account exists, a code has been sent." });
+      if (error) console.error("Background Email Failed:", error);
     });
+
+    // 2. ...but we instantly respond to the frontend BEFORE the email finishes sending!
+    // This makes the UI slide to Step 3 immediately with zero lag.
+    return res.status(200).json({ message: "If an account exists, a code has been sent." });
+
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
