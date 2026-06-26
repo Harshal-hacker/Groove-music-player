@@ -349,6 +349,7 @@ function Login() {
                 <div>
                   <input 
                     type="text" 
+                    placeholder="000000" 
                     required 
                     maxLength={6}
                     autoFocus
