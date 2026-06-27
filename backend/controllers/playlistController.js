@@ -246,3 +246,24 @@ exports.getAdminPlaylists = async (req, res) => {
     res.status(500).json({ message: "Internal server error fetching admin playlists." });
   }
 };
+
+// Fetch strictly the logged-in user's created and followed playlists
+exports.getUserLibrary = async (req, res) => {
+  try {
+    // The verifyToken middleware securely provides req.user
+    const userId = req.user.userId; 
+
+    // Find playlists I created OR playlists I hit the "save/heart" button on
+    const myPlaylists = await Playlist.find({
+      $or: [
+        { createdBy: userId },
+        { followers: userId }
+      ]
+    }).populate('songIds');
+
+    res.status(200).json(myPlaylists);
+  } catch (err) {
+    console.error("User Library Fetch Error:", err);
+    res.status(500).json({ message: "Internal server error fetching library." });
+  }
+};
