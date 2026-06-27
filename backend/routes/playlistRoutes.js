@@ -7,6 +7,7 @@ const { verifyToken } = require('../middleware/authMiddleware'); // 🛡️ IMPO
 router.post('/curated', verifyToken, playlistController.createCurated);
 router.post('/bulk-curate', verifyToken, playlistController.bulkCurate);
 router.post('/', verifyToken, playlistController.createPlaylist);
+router.get('/admin', playlistController.getAdminPlaylists);
 router.get('/', playlistController.getPlaylists); // 📖 Left public so guests can view homepage playlists
 
 // Modification
