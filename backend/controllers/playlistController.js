@@ -219,3 +219,36 @@ exports.editPlaylistDetails = async (req, res) => {
     res.status(500).json({ message: "Failed to update playlist details" });
   }
 };
+
+// Fetch Admin playlists using Pagination (The Spotify Way)
+exports.getAdminPlaylists = async (req, res) => {
+  try {
+    // 1. Check what page the mobile app is asking for (default to page 1)
+    const page = parseInt(req.query.page) || 1;
+    // 2. Decide how many items to send per page (default to 10)
+    const limit = parseInt(req.query.limit) || 10;
+    // 3. Calculate how many items to skip in the database
+    const skip = (page - 1) * limit;
+
+    // 4. Fetch only the specific chunk of data
+    const adminPlaylists = await Playlist.find({ isReadyMade: true })
+      .populate('songIds')
+      .skip(skip)
+      .limit(limit);
+
+    // 5. Count total playlists so the mobile app knows when to stop asking
+    const totalPlaylists = await Playlist.countDocuments({ isReadyMade: true });
+    const hasMore = skip + adminPlaylists.length < totalPlaylists;
+
+    // 6. Send the chunk AND the metadata back to the phone
+    res.status(200).json({
+      data: adminPlaylists,
+      currentPage: page,
+      hasMore: hasMore
+    });
+
+  } catch (err) {
+    console.error("Admin Playlist Fetch Error:", err);
+    res.status(500).json({ message: "Internal server error fetching admin playlists." });
+  }
+};
