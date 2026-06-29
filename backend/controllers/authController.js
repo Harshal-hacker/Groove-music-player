@@ -108,10 +108,19 @@ exports.getUserProfile = async (req, res) => {
 
 exports.toggleLikeSong = async (req, res) => {
   try {
-    const { userId, songId } = req.body;
+    // ⚡ THE FIX: Support BOTH Mobile (req.params.id) and Web (req.body.userId)
+    const userId = req.params.id || req.body.userId;
+    const { songId } = req.body;
+
+    // Security: Ensure the user is only modifying their own data
+    if (req.user.userId !== userId.toString()) {
+      return res.status(403).json({ message: "Unauthorized access" });
+    }
+
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Toggle logic
     const index = user.likedSongs.findIndex(id => id.toString() === songId);
     if (index > -1) {
       user.likedSongs.splice(index, 1); 
