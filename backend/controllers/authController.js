@@ -269,3 +269,21 @@ exports.verifyMagicLink = async (req, res) => {
     res.status(500).json({ message: "Server error during verification" });
   }
 };
+
+// Add this to the very bottom of controllers/authController.js
+exports.getLikedSongs = async (req, res) => {
+  try {
+    // 🛡️ Use the ID directly from the secure token
+    const userId = req.user.userId;
+    
+    // Find the user and "populate" the likedSongs array with the actual song data
+    const user = await User.findById(userId).populate('likedSongs');
+    
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json(user.likedSongs);
+  } catch (error) {
+    console.error("🔥 Fetch Liked Songs Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
