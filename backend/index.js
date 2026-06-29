@@ -1,5 +1,8 @@
 require('dotenv').config(); 
 const express = require('express');
+const http = require('http'); // ⚡ 1. Import Node's HTTP module
+const { Server } = require('socket.io'); // ⚡ 1. Import Socket.io
+
 const cors = require('cors');
 const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser'); 
@@ -14,6 +17,33 @@ const authRoutes = require('./routes/authRoutes');
 const playlistRoutes = require('./routes/playlistRoutes');
 
 const app = express();
+const server = http.createServer(app); // ⚡ 2. Wrap Express with HTTP Server
+
+// ⚡ 2. Initialize WebSockets & allow cross-origin connections
+const io = new Server(server, {
+  cors: {
+    origin: "*", 
+    methods: ["GET", "POST", "PATCH", "DELETE"]
+  }
+});
+
+// ⚡ 2. Make 'io' accessible inside your controllers
+app.set('io', io); 
+
+// ⚡ 2. Listen for Live WebSocket Connections
+io.on('connection', (socket) => {
+  console.log('🟢 A device connected:', socket.id);
+
+  // When a user opens the app, they join a private room using their User ID
+  socket.on('joinRoom', (userId) => {
+    socket.join(userId.toString()); // Force string to prevent room mismatches
+    console.log(`🔒 User ${userId} joined their secure room`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('🔴 A device disconnected');
+  });
+});
 
 const corsOptions = {
   origin: true, 
@@ -68,15 +98,15 @@ app.patch('/api/users/:id/playback', verifyToken, async (req, res) => {
 const connectDB = async () => {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGO_URI);
-    // 🎤 ADDED YOUR MESSAGE BACK!
     console.log("✅ Connected to MongoDB Database");
   }
 };
 
 if (require.main === module) {
   connectDB().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server is running on port ${PORT}`);
+    // ⚡ 3. CHANGE `app.listen` to `server.listen` so it boots both HTTP and WebSockets!
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server & WebSockets running on port ${PORT}`);
     });
   });
 }

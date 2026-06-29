@@ -50,6 +50,8 @@ const safeUpload = (req, res, next) => {
 // 👉 Pre-Flight Check (Fast, Text-Only)
 router.post('/check', verifyToken, songController.checkDuplicate);
 
+router.get('/search', songController.searchSongs);
+
 // 👉 1. Upload a new song (Protected + Safe Upload)
 router.post('/upload', verifyToken, safeUpload, songController.uploadSong);
 

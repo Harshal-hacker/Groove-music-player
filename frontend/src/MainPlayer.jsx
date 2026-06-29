@@ -4,6 +4,9 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 import { API_BASE_URL } from './config';
+import { io } from 'socket.io-client';
+const SOCKET_URL = API_BASE_URL.replace(/\/api$/, '');
+const socket = io(SOCKET_URL);
 
 import PlayerDeck from './components/PlayerDeck';
 import { usePlayer } from './context/PlayerContext';
@@ -77,6 +80,47 @@ function MainPlayer() {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1100);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+
+  useEffect(() => {
+    const userId = currentUser?._id;
+
+    if (userId) {
+      socket.emit('joinRoom', userId);
+
+      // (Your existing likes listener)
+      socket.on('likesUpdated', (updatedLikedSongsArray) => {
+        setUserData(prev => ({ ...prev, likedSongs: updatedLikedSongsArray }));
+      });
+
+      // ⚡ 1. Listen for new playlists
+      socket.on('playlistCreated', (newPlaylist) => {
+        console.log("🟢 Live Playlist Created!");
+        setUserPlaylists(prev => [...prev, newPlaylist]);
+      });
+
+      // ⚡ 2. Listen for renamed/edited playlists
+      socket.on('playlistUpdated', (updatedPlaylist) => {
+        console.log("🟢 Live Playlist Updated!");
+        setUserPlaylists(prev => prev.map(pl => pl._id === updatedPlaylist._id ? updatedPlaylist : pl));
+      });
+
+      // ⚡ 3. Listen for deleted playlists
+      socket.on('playlistDeleted', (deletedId) => {
+        console.log("🟢 Live Playlist Deleted!");
+        setUserPlaylists(prev => prev.filter(pl => pl._id !== deletedId));
+        
+        // If the user is currently looking at the deleted playlist, kick them back to 'All'
+        setSelectedPlaylist(currentId => currentId === deletedId ? null : currentId);
+      });
+    }
+
+    return () => {
+      socket.off('likesUpdated');
+      socket.off('playlistCreated');
+      socket.off('playlistUpdated');
+      socket.off('playlistDeleted');
+    };
+  }, [currentUser]);
 
   // 1. Unconditional Resizing Rules (Handles DevTools Opening)
   useEffect(() => {
@@ -447,10 +491,20 @@ function MainPlayer() {
     } catch (error) { setUserPlaylists(previousPlaylists); }
   };
 
+  // Ensure this is defined inside the MainPlayer component
   const filteredPlaylist = playlist.filter((song) => {
-    const matchesSearch = song.title.toLowerCase().includes(debouncedQuery.toLowerCase()) || song.artist.toLowerCase().includes(debouncedQuery.toLowerCase());
-    if (activeCategory === 'Liked') return matchesSearch && userData?.likedSongs?.some(likedId => String(likedId) === String(song._id));
-    if (selectedPlaylist) return matchesSearch && userPlaylists.find(pl => pl._id === selectedPlaylist)?.songIds.some(id => String(id._id || id) === String(song._id));
+    const matchesSearch = song.title.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
+                          song.artist.toLowerCase().includes(debouncedQuery.toLowerCase());
+    
+    // ⚡ The dependency on userData.likedSongs must be here!
+    if (activeCategory === 'Liked') {
+      return matchesSearch && userData?.likedSongs?.some(likedId => String(likedId) === String(song._id));
+    }
+    
+    if (selectedPlaylist) {
+      return matchesSearch && userPlaylists.find(pl => pl._id === selectedPlaylist)?.songIds.some(id => String(id._id || id) === String(song._id));
+    }
+    
     return matchesSearch;
   });
 

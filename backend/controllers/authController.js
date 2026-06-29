@@ -111,25 +111,27 @@ exports.toggleLikeSong = async (req, res) => {
     const userId = req.user.userId;
     const songId = req.body.songId || req.body.id; 
 
-    if (!songId) {
-      return res.status(400).json({ message: "Song ID is required" });
-    }
+    if (!songId) return res.status(400).json({ message: "Song ID is required" });
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 1. Check if the song is already liked
     const isLiked = user.likedSongs && user.likedSongs.some(id => id.toString() === songId.toString());
 
-    // ⚡ THE FIX: Use MongoDB Atomic Operators! 
-    // This bypasses full document validation, so legacy accounts missing a "profileName" won't crash.
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       isLiked 
-        ? { $pull: { likedSongs: songId } }      // If liked, remove it
-        : { $addToSet: { likedSongs: songId } }, // If not liked, add it
-      { new: true } // Return the freshly updated document
+        ? { $pull: { likedSongs: songId } }      
+        : { $addToSet: { likedSongs: songId } }, 
+      { new: true } 
     );
+
+    // ⚡ THE WEBSOCKET BROADCAST
+    // Grab the live connection from the server
+    const io = req.app.get('io');
+    
+    // Broadcast the new list specifically to this user's private room
+    io.to(userId.toString()).emit('likesUpdated', updatedUser.likedSongs);
 
     res.status(200).json({ likedSongs: updatedUser.likedSongs });
   } catch (err) {

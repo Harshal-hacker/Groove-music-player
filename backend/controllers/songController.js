@@ -199,3 +199,22 @@ exports.checkDuplicate = async (req, res) => {
     res.status(500).json({ error: "Server error during check." });
   }
 };
+
+exports.searchSongs = async (req, res) => {
+  try {
+    const { q } = req.query; // The 'q' from the URL
+    
+    // Use MongoDB regex to find matches in title or artist
+    const songs = await Song.find({ 
+      $or: [
+        { title: { $regex: q, $options: 'i' } },
+        { artist: { $regex: q, $options: 'i' } }
+      ]
+    });
+    
+    res.json(songs);
+  } catch (err) {
+    console.error("Search controller error:", err);
+    res.status(500).json({ message: "Search failed" });
+  }
+};
