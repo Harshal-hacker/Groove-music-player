@@ -41,11 +41,6 @@ router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPass
 router.patch('/reset-password', resetPasswordLimiter, authController.resetPassword);
 router.patch('/sync-playback', verifyToken, authController.syncPlayback);
 
-// Profile & interaction endpoints mapped to base /api/users context inside index.js
-router.get('/user-profile/:id', authController.getUserProfile);
-router.patch('/toggle-like', verifyToken, authController.toggleLikeSong);
-router.post('/:id/like', verifyToken, authController.toggleLikeSong);
-
 // ⚡ CHECK-EMAIL ROUTE (Now bug-free because User is imported!)
 router.post('/check-email', async (req, res) => {
   try {

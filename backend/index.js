@@ -7,6 +7,7 @@ const User = require('./models/User');
 
 // 🛡️ IMPORT THE SHIELD
 const { verifyToken } = require('./middleware/authMiddleware');
+const authController = require('./controllers/authController');
 
 const songRoutes = require('./routes/songRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -30,6 +31,9 @@ const PORT = process.env.PORT || 5000;
 app.use('/api/songs', songRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/playlists', playlistRoutes);
+app.patch('/api/users/toggle-like', verifyToken, authController.toggleLikeSong);
+app.post('/api/users/:id/like', verifyToken, authController.toggleLikeSong);
+app.get('/api/users/user-profile/:id', authController.getUserProfile);
 
 // 🛡️ ADDED verifyToken and Identity Check!
 app.patch('/api/users/:id/playback', verifyToken, async (req, res) => {

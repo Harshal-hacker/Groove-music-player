@@ -108,29 +108,32 @@ exports.getUserProfile = async (req, res) => {
 
 exports.toggleLikeSong = async (req, res) => {
   try {
-    // ⚡ THE FIX: Support BOTH Mobile (req.params.id) and Web (req.body.userId)
-    const userId = req.params.id || req.body.userId;
-    const { songId } = req.body;
+    const userId = req.user.userId;
+    const songId = req.body.songId || req.body.id; 
 
-    // Security: Ensure the user is only modifying their own data
-    if (req.user.userId !== userId.toString()) {
-      return res.status(403).json({ message: "Unauthorized access" });
+    if (!songId) {
+      return res.status(400).json({ message: "Song ID is required" });
     }
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Toggle logic
-    const index = user.likedSongs.findIndex(id => id.toString() === songId);
-    if (index > -1) {
-      user.likedSongs.splice(index, 1); 
-    } else {
-      user.likedSongs.push(songId); 
-    }
+    // 1. Check if the song is already liked
+    const isLiked = user.likedSongs && user.likedSongs.some(id => id.toString() === songId.toString());
 
-    await user.save();
-    res.json({ likedSongs: user.likedSongs });
+    // ⚡ THE FIX: Use MongoDB Atomic Operators! 
+    // This bypasses full document validation, so legacy accounts missing a "profileName" won't crash.
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      isLiked 
+        ? { $pull: { likedSongs: songId } }      // If liked, remove it
+        : { $addToSet: { likedSongs: songId } }, // If not liked, add it
+      { new: true } // Return the freshly updated document
+    );
+
+    res.status(200).json({ likedSongs: updatedUser.likedSongs });
   } catch (err) {
+    console.error("🔥 Toggle Like Error:", err);
     res.status(500).json({ error: err.message });
   }
 };
