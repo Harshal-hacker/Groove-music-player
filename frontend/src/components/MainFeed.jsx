@@ -235,39 +235,6 @@ export default function MainFeed({
         </div>
       )}
 
-      {/* 2. SEARCH RESULTS */}
-      {((activeCategory === 'All' && !selectedPlaylist && debouncedQuery.trim() !== '') || (activeCategory !== 'All' && !selectedPlaylist)) && (
-        <div style={{ flex: 1, padding: '24px' }}>
-          <div style={{ marginBottom: '50px' }}>
-            <span style={{ background: '#10b981', color: '#000', padding: '4px 12px', borderRadius: '50px', fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>
-              {debouncedQuery.trim() !== '' ? 'SEARCH RESULTS' : 'ALL SONGS'}
-            </span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px', paddingBottom: '40px' }}>
-            {filteredPlaylist.map((track) => {
-              const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
-              return (
-                <div key={track._id} className={`advanced-music-card ${isActive ? 'active' : ''}`} onClick={() => { setPlaybackContext(filteredPlaylist); setSelectedPlaylist(selectedPlaylist); setCurrentTrackIndex(playlist.findIndex(p => p._id === track._id)); setIsPlaying(true); syncPlayback(track._id, 0, selectedPlaylist); if (isPlayingFromQueueRef) isPlayingFromQueueRef.current = false; }} onContextMenu={(e) => handleContextMenu(e, track._id, 'song')} style={{ cursor: 'pointer', padding: '16px', borderRadius: '20px', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', backgroundColor: isActive ? '#1a1a1a' : '#0a0a0a', border: isActive ? '1px solid #10b981' : '1px solid #333' }}>
-                  <div style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', aspectRatio: '1/1', boxShadow: '0 12px 24px rgba(0,0,0,0.3)', marginBottom: '16px' }}>
-                    {/* ⚡ LAZY LOADING */}
-                    <img src={track.cover} alt={track.title} onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: '0.5s' }} className="card-img" loading="lazy" />
-                    <div className="card-overlay" style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0, transition: '0.3s ease', backdropFilter: 'blur(4px)' }}>
-                      <div style={{ width: '48px', height: '48px', backgroundColor: '#10b981', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 15px rgba(16, 185, 129, 0.4)' }}>
-                        {isActive ? <Pause size={24} fill="white" color="white" /> : <Play size={24} fill="white" color="white" style={{marginLeft: '3px'}} />}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ padding: '0 4px' }}>
-                    <h4 style={{ fontSize: '15px', fontWeight: '800', color: isActive ? '#10b981' : '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</h4>
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', margin: '4px 0 0' }}>{track.artist}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* 3. PLAYLIST DETAIL VIEW */}
       {activeCategory !== 'All' || selectedPlaylist ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
