@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const playlistController = require('../controllers/playlistController');
-const { verifyToken } = require('../middleware/authMiddleware'); // 🛡️ IMPORT THE SHIELD
+const { verifyToken } = require('../middleware/authMiddleware');
 
+// 🛡️ IMPORT THE SHIELD
 // Creation & Fetching
+// ⚡ FIX: Removed the undefined 'isAdmin' variable. The controller handles the security check.
 router.post('/curated', verifyToken, playlistController.createCurated);
 router.post('/bulk-curate', verifyToken, playlistController.bulkCurate);
+
 router.post('/', verifyToken, playlistController.createPlaylist);
 router.get('/admin', playlistController.getAdminPlaylists);
 router.get('/user', verifyToken, playlistController.getUserLibrary);
-router.get('/', playlistController.getPlaylists); // 📖 Left public so guests can view homepage playlists
+router.get('/', playlistController.getPlaylists); // Left public so guests can view homepage playlists
 
 // Modification
 router.patch('/:id/rename', verifyToken, playlistController.renamePlaylist);

@@ -53,8 +53,7 @@ function MainPlayer() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showAdmin, setShowAdmin] = useState(false); 
+  const [error, setError] = useState(null); 
   
   const [contextMenu, setContextMenu] = useState(null); 
   const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
@@ -69,10 +68,6 @@ function MainPlayer() {
   const [tempName, setTempName] = useState('');
   
   const [activeCategory, setActiveCategory] = useState('All');
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const [overallProgress, setOverallProgress] = useState(0);
-  const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
@@ -168,7 +163,7 @@ function MainPlayer() {
       .then(response => response.json())
       .then(data => { setPlaylist(data); setIsLoading(false); })
       .catch(err => { console.error("Fetch error:", err); setIsLoading(false); });
-  }, [showAdmin]); 
+  }, []); // ✅ Empty array 
 
   useEffect(() => {
     if (id) { setSelectedPlaylist(id); setActiveCategory('All'); } 
@@ -186,7 +181,7 @@ function MainPlayer() {
       } catch (err) { console.error("Library Fetch Failed:", err); }
     };
     fetchUserLibrary();
-  }, [showAdmin, isAuthenticated, currentUser]); 
+  }, [isAuthenticated, currentUser]); 
 
   useEffect(() => {
     if (audioRef.current && currentTrack) {
@@ -204,8 +199,12 @@ function MainPlayer() {
   useEffect(() => {
     if ('mediaSession' in navigator && currentTrack) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentTrack.title, artist: currentTrack.artist, album: "Groove Collection",
-        artwork: [{ src: currentTrack.cover || '/Groove.png', sizes: '512x512', type: 'image/png' }]
+        title: currentTrack.title, 
+        // UPDATE THIS LINE:
+        artist: currentTrack.artists?.map(a => a.name).join(', ') || "Unknown Artist", 
+        album: "Groove Collection",
+        // UPDATE THIS LINE:
+        artwork: [{ src: currentTrack.albumId?.coverArt || '/Groove.png', sizes: '512x512', type: 'image/png' }]
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
     }
@@ -451,7 +450,7 @@ function MainPlayer() {
     setIsPlaying(false); setCurrentTrackIndex(0); setCurrentTime(0);
     try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' }); } catch (err) {}
     setCurrentUser(null); localStorage.clear(); 
-    setShowAdmin(false); setSelectedPlaylist(null);
+    setSelectedPlaylist(null);
     navigate('/'); 
   };
 
@@ -491,12 +490,12 @@ function MainPlayer() {
     } catch (error) { setUserPlaylists(previousPlaylists); }
   };
 
-  // Ensure this is defined inside the MainPlayer component
+  // Find this function and update the matchesSearch line:
   const filteredPlaylist = playlist.filter((song) => {
+    // UPDATE THIS LINE:
     const matchesSearch = song.title.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
-                          song.artist.toLowerCase().includes(debouncedQuery.toLowerCase());
+                          (song.artists?.map(a => a.name).join(', ') || "").toLowerCase().includes(debouncedQuery.toLowerCase());
     
-    // ⚡ The dependency on userData.likedSongs must be here!
     if (activeCategory === 'Liked') {
       return matchesSearch && userData?.likedSongs?.some(likedId => String(likedId) === String(song._id));
     }
@@ -523,37 +522,29 @@ function MainPlayer() {
       <div style={{ display: 'flex', flex: 1, width: '100%', gap: '12px', overflow: 'hidden', boxSizing: 'border-box' }}>
         
         <Sidebar 
-          isAuthenticated={isAuthenticated} isAdmin={isAdmin} setShowAdmin={setShowAdmin} handleCreatePlaylistInline={handleCreatePlaylistInline}
+          isAuthenticated={isAuthenticated} isAdmin={isAdmin} handleCreatePlaylistInline={handleCreatePlaylistInline}
           activeCategory={activeCategory} setActiveCategory={setActiveCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist}
           userPlaylists={userPlaylists} handleContextMenu={handleContextMenu}
           isCollapsed={isSidebarCollapsed} 
           toggleSidebar={toggleSidebar} 
         />
 
-        {/* ⚡ THE MAIN FEED (CRITICAL FIX: minWidth is now 0 so it squishes perfectly instead of breaking) */}
+        {/* ⚡ THE MAIN FEED */}
         <AnimatePresence mode="wait">
           <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} 
             style={{ flex: 1, minWidth: 0, display: 'flex', overflow: 'hidden' }} 
           >
             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
-              {showAdmin ? (
-                <Admin 
-                  onBack={() => setShowAdmin(false)}
-                  uploadProgress={uploadProgress}
-                  setUploadProgress={setUploadProgress}
-                  isUploading={isUploading}
-                  setIsUploading={setIsUploading}
-                  setOverallProgress={setOverallProgress}
-                  setUploadStats={setUploadStats}
-                  setPlaylist={setPlaylist}
-                />
-              ) : location.pathname === '/profile' ? (
+              
+              {/* ⚡ ADMIN BLOCK DELETED HERE. Only Profile, Settings, or MainFeed remain! */}
+              {location.pathname === '/profile' ? (
                 <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
               ) : location.pathname === '/settings' ? (
                 <Settings handleLogout={handleLogout} /> 
               ) : (
                 <MainFeed activeCategory={activeCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist} debouncedQuery={debouncedQuery} userPlaylists={userPlaylists} setUserPlaylists={setUserPlaylists} filteredPlaylist={filteredPlaylist} readyMadePlaylists={readyMadePlaylists} handleContextMenu={handleContextMenu} handleAddToPlaylist={handleAddToPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} isAdmin={isAdmin} setToast={setToast} />
               )}
+              
             </Suspense>
           </motion.div>
         </AnimatePresence>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, X, Play, TrendingUp } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
+import { API_BASE_URL } from '../config';
 
 export default function SearchModal({
   isOpen,
@@ -179,10 +180,12 @@ export default function SearchModal({
                     }}
                   >
                     <div style={{ position: 'relative', width: '48px', height: '48px', flexShrink: 0 }}>
+                      {/* ⚡ UPDATED: Relational album cover art */}
                       <img 
-                        src={track.cover || "/Groove.png"} 
+                        src={track.albumId?.coverArt || "/Groove.png"} 
                         style={{ width: '100%', height: '100%', borderRadius: '10px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} 
                         alt="" 
+                        onError={(e) => { e.target.src = "/Groove.png"; }}
                       />
                       {/* Play overlay on hover */}
                       <div style={{ 
@@ -198,8 +201,9 @@ export default function SearchModal({
                       <span style={{ fontSize: '15px', fontWeight: '800', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {track.title}
                       </span>
+                      {/* ⚡ UPDATED: Relational artist name */}
                       <span style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {track.artist}
+                        {track.artists?.map(a => a.name).join(', ') || "Unknown Artist"}
                       </span>
                     </div>
 

@@ -56,46 +56,41 @@ router.post('/check-email', async (req, res) => {
   }
 });
 
-// ⚡ NEW GOOGLE AUTH ROUTE
+// ⚡ CORRECTED GOOGLE AUTH ROUTE
 router.post('/google', async (req, res) => {
   try {
     const { credential } = req.body;
 
-    // 1. Verify the token with Google's servers
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload(); 
 
-    // 2. Check if this user already exists in Groove's database
     let user = await User.findOne({ email: payload.email });
 
     if (!user) {
-      // 3. If they don't exist, instantly create an account for them
       user = new User({
         email: payload.email,
         profileName: payload.name,
-        // Generate a massive random password since they will use Google to log in
         password: Math.random().toString(36).slice(-12), 
-        isEmailVerified: true 
+        // Note: 'isEmailVerified' is not in your User model, it will be ignored by Mongoose.
       });
       await user.save();
     }
 
-    // 4. Issue your standard Groove JWT Token
     const token = jwt.sign(
       { userId: user._id, role: user.role }, 
       process.env.JWT_SECRET, 
       { expiresIn: '7d' }
     );
 
-    // 5. Send the secure HTTP-Only cookie back to the browser
-    res.cookie('token', token, {
+    // ⚡ FIX: Use 'auth_token' to match verifyToken middleware
+    res.cookie('auth_token', token, { 
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      sameSite: 'none', // Changed to 'none' to match your authController settings
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     res.status(200).json({ 

@@ -51,6 +51,11 @@ export const PlayerProvider = ({ children }) => {
   const [uploadAbortController, setUploadAbortController] = useState(null);
   const [playingPlaylistId, setPlayingPlaylistId] = useState(() => loadSetting('groove_playingPlaylistId', null));
   useEffect(() => localStorage.setItem('groove_playingPlaylistId', JSON.stringify(playingPlaylistId)), [playingPlaylistId]);
+  
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 });
 
   // SETTINGS STATES
   const [highQuality, setHighQuality] = useState(() => loadSetting('groove_highQuality', true));
@@ -156,8 +161,9 @@ export const PlayerProvider = ({ children }) => {
   // GLOBAL AUDIO ENGINE LOGIC
   useEffect(() => {
     if (audioRef.current && currentTrack) {
-      if (audioRef.current.src !== currentTrack.src) {
-        audioRef.current.src = currentTrack.src;
+      // ⚡ UPDATED: Checking against audioUrl instead of src
+      if (audioRef.current.src !== currentTrack.audioUrl) {
+        audioRef.current.src = currentTrack.audioUrl;
       }
       if (isPlaying) {
         audioRef.current.play().catch(e => console.error("Auto-play failed:", e));
@@ -189,7 +195,6 @@ export const PlayerProvider = ({ children }) => {
   // ==========================================
   // 🧠 NEW: MEMORY TRACKER EFFECT
   // ==========================================
-  // This safely remembers your spot in the main playlist before the queue interrupts!
   useEffect(() => {
     if (isPlayingFromQueueRef.current) return; 
     const currentPool = playbackContext.length > 0 ? playbackContext : playlist;
@@ -269,19 +274,16 @@ export const PlayerProvider = ({ children }) => {
       return;
     }
 
-    // 🚀 THE NEW FIX: Are we currently in a Queued song?
     if (isPlayingFromQueueRef.current) {
-      // Escape the queue and return exactly to the interrupted song (Song 9)
       isPlayingFromQueueRef.current = false;
       
       const interruptedSong = currentPool[lastContextIndexRef.current];
       if (interruptedSong) {
         setCurrentTrackIndex(playlist.findIndex(s => s._id === interruptedSong._id));
       }
-      return; // Stop the function here so it doesn't subtract 1!
+      return; 
     }
 
-    // NORMAL LOGIC: If we are NOT in the queue, do the normal "subtract 1" math
     isPlayingFromQueueRef.current = false; 
 
     const currentIndexInPool = currentPool.findIndex(s => s._id === currentTrack?._id);
@@ -328,13 +330,22 @@ export const PlayerProvider = ({ children }) => {
       setUploadQueue, 
       isQueueMinimized, 
       setIsQueueMinimized,
-      uploadAbortController, setUploadAbortController
+      uploadAbortController, setUploadAbortController,
+      uploadProgress,
+      setUploadProgress,
+      isUploading,
+      setIsUploading,
+      overallProgress,
+      setOverallProgress,
+      uploadStats,
+      setUploadStats
     }}>
       {!isAuthLoading && children}
       {currentTrack && (
         <audio 
           ref={audioRef} 
-          src={currentTrack.src} 
+          // ⚡ UPDATED: Changed .src to .audioUrl
+          src={currentTrack.audioUrl} 
           preload="metadata" 
           onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)} 
           onLoadedMetadata={() => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Play, MoreHorizontal } from 'lucide-react'; // ⚡ Swapped Grip for Play & More
+import { X, Play, MoreHorizontal } from 'lucide-react'; 
 import { usePlayer } from '../context/PlayerContext';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -39,10 +39,16 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
   return (
     <aside style={{
       /* ⚡ GROOVE BENTO STYLING: 300px width, 16px radius, bordered shell */
-      width: isQueueOpen ? '320px' : '0px', opacity: isQueueOpen ? 1 : 0,
-      backgroundColor: '#121212', border: isQueueOpen ? '1px solid #222' : 'none',
-      borderRadius: '16px', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-      display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 1050
+      width: isQueueOpen ? '320px' : '0px', 
+      opacity: isQueueOpen ? 1 : 0,
+      backgroundColor: '#121212', 
+      border: isQueueOpen ? '1px solid #222' : 'none',
+      borderRadius: '16px', 
+      transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden', 
+      zIndex: 1050
     }}>
       <div style={{ padding: '20px 16px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#fff' }}>Queue</h3>
@@ -58,10 +64,12 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
           <div>
             <h4 style={{ margin: '0 8px 8px', fontSize: '14px', color: '#fff', fontWeight: '700' }}>Now playing</h4>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px', borderRadius: '6px' }}>
-              <img src={currentTrack.cover || "/Groove.png"} style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} alt="" />
+              {/* ⚡ FIX: Relational Album Cover Art */}
+              <img src={currentTrack.albumId?.coverArt || "/Groove.png"} style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} alt="" />
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <p style={{ margin: 0, fontSize: '14px', color: '#1ed760', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.title}</p>
-                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.artist}</p>
+                {/* ⚡ FIX: Relational Artist Name */}
+                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentTrack.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</p>
               </div>
             </div>
           </div>
@@ -74,16 +82,15 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
               <h4 style={{ margin: 0, fontSize: '14px', color: '#fff', fontWeight: '700' }}>Next in queue</h4>
               
               <button 
-                // ⚡ UPDATED ONCLICK: Triggers the beautiful confirmation modal
                 onClick={() => {
                   setConfirmDialog({
                     isOpen: true,
                     title: "Clear Queue",
                     message: "Are you sure you want to remove all upcoming tracks from your manual queue?",
-                    confirmText: "CLEAR QUEUE", // Uses our dynamic text!
+                    confirmText: "CLEAR QUEUE", 
                     onConfirm: () => {
-                      setQueue([]); // Actually clears the queue
-                      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null }); // Closes modal
+                      setQueue([]); 
+                      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null }); 
                     }
                   });
                 }} 
@@ -112,10 +119,10 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                             <div 
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              {...provided.dragHandleProps} // ⚡ SPOTIFY MAGIC: The whole row is draggable!
+                              {...provided.dragHandleProps} 
                               onMouseEnter={() => setHoveredTrack(uniqueId)}
                               onMouseLeave={() => setHoveredTrack(null)}
-                              onDoubleClick={() => handlePlayRow(song, true, index)} // Play on double click
+                              onDoubleClick={() => handlePlayRow(song, true, index)} 
                               style={{ 
                                 display: 'flex', alignItems: 'center', gap: '12px',
                                 padding: '8px', borderRadius: '6px',
@@ -126,9 +133,9 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                               }}
                             >
                               <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
-                                <img src={song.cover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: hoveredTrack === uniqueId ? 0.4 : 1 }} alt="" />
+                                {/* ⚡ FIX: Relational Album Cover Art */}
+                                <img src={song.albumId?.coverArt || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: hoveredTrack === uniqueId ? 0.4 : 1 }} alt="" />
                                 
-                                {/* ⚡ SPOTIFY MAGIC: Hover Play Button */}
                                 {hoveredTrack === uniqueId && (
                                   <div 
                                     onClick={(e) => { e.stopPropagation(); handlePlayRow(song, true, index); }}
@@ -141,15 +148,15 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                               
                               <div style={{ flex: 1, overflow: 'hidden' }}>
                                 <p style={{ margin: 0, fontSize: '14px', color: '#fff', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
-                                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist}</p>
+                                {/* ⚡ FIX: Relational Artist Name */}
+                                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</p>
                               </div>
                               
-                              {/* ⚡ SPOTIFY MAGIC: Hidden until hovered */}
                               {hoveredTrack === uniqueId && (
                                 <div 
                                     onClick={(e) => {
-                                    e.stopPropagation(); // Stops the song from playing
-                                    handleContextMenu(e, song._id, 'song', 'queue'); // Opens the menu!
+                                    e.stopPropagation(); 
+                                    handleContextMenu(e, song._id, 'song', 'queue'); 
                                     }}
                                     style={{ color: '#a7a7a7', cursor: 'pointer', padding: '4px', transition: 'color 0.2s' }}
                                     onMouseOver={e => e.currentTarget.style.color = '#fff'}
@@ -192,7 +199,7 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                         key={uniqueId} 
                         onMouseEnter={() => setHoveredTrack(uniqueId)}
                         onMouseLeave={() => setHoveredTrack(null)}
-                        onDoubleClick={() => handlePlayRow(song, false, index)} // Play on double click
+                        onDoubleClick={() => handlePlayRow(song, false, index)} 
                         style={{ 
                           display: 'flex', alignItems: 'center', gap: '12px', padding: '8px', borderRadius: '6px',
                           backgroundColor: hoveredTrack === uniqueId ? 'rgba(255,255,255,0.05)' : 'transparent',
@@ -200,7 +207,8 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                         }}
                       >
                         <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
-                          <img src={song.cover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: hoveredTrack === uniqueId ? 0.4 : 1 }} alt="" />
+                          {/* ⚡ FIX: Relational Album Cover Art */}
+                          <img src={song.albumId?.coverArt || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: hoveredTrack === uniqueId ? 0.4 : 1 }} alt="" />
                           
                           {hoveredTrack === uniqueId && (
                             <div 
@@ -213,15 +221,15 @@ export default function RightQueue({ isQueueOpen, setIsQueueOpen, lastContextInd
                         </div>
                         <div style={{ flex: 1, overflow: 'hidden' }}>
                           <p style={{ margin: 0, fontSize: '14px', color: '#fff', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
-                          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist}</p>
+                          {/* ⚡ FIX: Relational Artist Name */}
+                          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#a7a7a7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</p>
                         </div>
 
-                        {/* Spotify's generic action menu for auto-queued tracks */}
                         {hoveredTrack === uniqueId && (
                           <div 
                             onClick={(e) => {
-                              e.stopPropagation(); // Stops the song from playing
-                              handleContextMenu(e, song._id, 'song', 'queue'); // Opens the menu!
+                              e.stopPropagation(); 
+                              handleContextMenu(e, song._id, 'song', 'queue'); 
                             }}
                             style={{ color: '#a7a7a7', cursor: 'pointer', padding: '4px', transition: 'color 0.2s' }}
                             onMouseOver={e => e.currentTarget.style.color = '#fff'}

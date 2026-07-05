@@ -15,6 +15,7 @@ const authController = require('./controllers/authController');
 const songRoutes = require('./routes/songRoutes');
 const authRoutes = require('./routes/authRoutes');
 const playlistRoutes = require('./routes/playlistRoutes');
+const albumRoutes = require('./routes/albumRoutes');
 
 const app = express();
 const server = http.createServer(app); // ⚡ 2. Wrap Express with HTTP Server
@@ -59,6 +60,7 @@ app.use(cookieParser());
 const PORT = process.env.PORT || 5000;
 
 app.use('/api/songs', songRoutes);
+app.use('/api/albums', albumRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/playlists', playlistRoutes);
 app.patch('/api/users/toggle-like', verifyToken, authController.toggleLikeSong);
@@ -95,20 +97,29 @@ app.patch('/api/users/:id/playback', verifyToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// SERVER STARTUP BLOCK (FORCED START)
+// ==========================================
+
 const connectDB = async () => {
   if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ Connected to MongoDB Database");
+    try {
+      console.log("⏳ Connecting to database...");
+      await mongoose.connect(process.env.MONGO_URI);
+      console.log("✅ Connected to MongoDB Database");
+    } catch (err) {
+      console.warn("⚠️ MongoDB Error:", err.message);
+      console.warn("⚠️ Running server without database connectivity.");
+    }
   }
 };
 
-if (require.main === module) {
-  connectDB().then(() => {
-    // ⚡ 3. CHANGE `app.listen` to `server.listen` so it boots both HTTP and WebSockets!
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server & WebSockets running on port ${PORT}`);
-    });
+// ⚡ FORCED START: No 'if' checks. We tell it to start immediately.
+console.log("🚀 Booting up the server...");
+connectDB().then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server & WebSockets running on port ${PORT}`);
   });
-}
+});
 
 module.exports = { app, connectDB };

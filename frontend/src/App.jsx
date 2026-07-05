@@ -11,6 +11,7 @@ import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
 import Admin from './Admin';
 import GlobalUploadManager from './components/GlobalUploadManager';
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -27,8 +28,8 @@ function App() {
             <Route path="/signup" element={<SignUp />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<Navigate to="/" />} />
+            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           </Routes>
           <GlobalUploadManager />
         </Sentry.ErrorBoundary>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Heart, Library, User } from 'lucide-react'; // Added Library and User icons
+import { Plus, Heart, Library, User } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import { usePlayer } from '../context/PlayerContext';
 
@@ -14,8 +14,8 @@ export default function Sidebar({
   setSelectedPlaylist,
   userPlaylists, 
   handleContextMenu,
-  isCollapsed, // ⚡ 1. NEW PROP: Tells sidebar to shrink
-  toggleSidebar // ⚡ 2. NEW PROP: Allows user to click library icon to open/close
+  isCollapsed, 
+  toggleSidebar 
 }) {
   const navigate = useNavigate();
   
@@ -30,7 +30,6 @@ export default function Sidebar({
 
   return (
     <aside style={{ 
-      /* ⚡ SMART SPOTIFY WIDTH LOGIC: Shrinks to 88px when collapsed */
       width: isCollapsed ? '88px' : '320px', 
       display: 'flex', flexDirection: 'column',
       backgroundColor: '#121212', border: isAdmin ? '1px solid #10b981' : '1px solid #222',
@@ -43,7 +42,7 @@ export default function Sidebar({
           handleContextMenu(e, 'empty-sidebar', 'sidebar-empty', 'sidebar');
         }
     }}>
-        {/* ⚡ HEADER SECTION: Turns into a clickable button to expand/collapse */}
+        {/* HEADER SECTION */}
         <div style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'space-between', alignItems: 'center', marginBottom: '25px' }}>
           
           <div 
@@ -59,7 +58,7 @@ export default function Sidebar({
           
           {isAuthenticated && isAdmin && !isCollapsed && (
             <button 
-              onClick={() => setShowAdmin(true)}
+              onClick={() => window.open('/admin', '_blank')}
               style={{
                 background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', color: '#10b981',
                 padding: '4px 10px', borderRadius: '8px', fontSize: '10px', fontWeight: '900',
@@ -73,7 +72,7 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* ⚡ PLAYLIST HEADER: Hidden entirely when collapsed */}
+        {/* PLAYLIST HEADER */}
         {!isCollapsed && (
           <div style={{ margin: '15px 0 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <p style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', letterSpacing: '2px', margin: 0 }}>PLAYLISTS</p>
@@ -145,8 +144,9 @@ export default function Sidebar({
                     }}
                 >
                   <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {/* ⚡ UPDATED: Relational cover art access */}
                     <img 
-                      src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} alt="cover" onError={(e) => e.target.src = "/Groove.png"}
+                      src={pl.songIds?.[0]?.albumId?.coverArt || pl.playlistCover || "/Groove.png"} alt="cover" onError={(e) => e.target.src = "/Groove.png"}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: selectedPlaylist === pl._id ? 1 : 0.7, transition: '0.3s' }} 
                     />
                   </div>

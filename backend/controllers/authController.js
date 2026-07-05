@@ -191,6 +191,13 @@ exports.resetPassword = async (req, res) => {
 exports.syncPlayback = async (req, res) => {
   try {
     const { trackId, time, playlistId } = req.body;
+    
+    // Optional: Only allow sync if trackId is actually valid (or null if resetting)
+    if (trackId) {
+        const songExists = await Song.findById(trackId);
+        if (!songExists) return res.status(404).json({ message: "Track not found" });
+    }
+
     await User.findByIdAndUpdate(req.user.userId, { 
       $set: { 'activeSession.trackId': trackId, 'activeSession.currentTime': time, 'activeSession.playlistId': playlistId } 
     });

@@ -4,6 +4,38 @@ import { usePlayer } from '../context/PlayerContext';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 
+const DockButton = ({ icon, text, onClick, active, success }) => (
+  <button
+    onClick={onClick}
+    style={{
+      display: 'flex', alignItems: 'center', gap: '8px', 
+      padding: text ? '8px 16px' : '8px', 
+      background: active ? '#10b981' : success ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+      border: 'none', borderRadius: '50px',
+      color: active ? '#000' : success ? '#10b981' : '#a7a7a7',
+      fontSize: '13px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+      whiteSpace: 'nowrap', flexShrink: 0
+    }}
+    onMouseOver={e => {
+      if (!active && !success) {
+        e.currentTarget.style.color = '#fff';
+        e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+      }
+      e.currentTarget.style.transform = 'scale(1.05)';
+    }}
+    onMouseOut={e => {
+      if (!active && !success) {
+        e.currentTarget.style.color = '#a7a7a7';
+        e.currentTarget.style.background = 'transparent';
+      }
+      e.currentTarget.style.transform = 'scale(1)';
+    }}
+  >
+    {icon}
+    {text && <span>{text}</span>}
+  </button>
+);
+
 export default function MainFeed({
   activeCategory,
   selectedPlaylist,
@@ -44,6 +76,28 @@ export default function MainFeed({
 
   // ⚡ PERFORMANCE OPTIMIZATION: Track limit state for Infinite Scroll
   const [visibleTracksCount, setVisibleTracksCount] = useState(30);
+
+  // ⚡ NEW: Album State for the dynamic home screen
+  const [albums, setAlbums] = useState([]);
+  const [isAlbumsLoading, setIsAlbumsLoading] = useState(true);
+
+  // Fetch Albums on Component Mount
+  useEffect(() => {
+    const fetchAlbums = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/albums`);
+        if (response.ok) {
+          const data = await response.json();
+          setAlbums(data);
+        }
+      } catch (error) {
+        console.error("Failed to load albums:", error);
+      } finally {
+        setIsAlbumsLoading(false);
+      }
+    };
+    fetchAlbums();
+  }, []);
 
   // Reset infinite scroll limits whenever a user changes playlists or searches
   useEffect(() => {
@@ -127,41 +181,9 @@ export default function MainFeed({
     } catch (error) { console.error("Edit failed:", error); }
   };
 
-  const DockButton = ({ icon, text, onClick, active, success }) => (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '8px', 
-        padding: text ? '8px 16px' : '8px', 
-        background: active ? '#10b981' : success ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-        border: 'none', borderRadius: '50px',
-        color: active ? '#000' : success ? '#10b981' : '#a7a7a7',
-        fontSize: '13px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-        whiteSpace: 'nowrap', flexShrink: 0
-      }}
-      onMouseOver={e => {
-        if (!active && !success) {
-          e.currentTarget.style.color = '#fff';
-          e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-        }
-        e.currentTarget.style.transform = 'scale(1.05)';
-      }}
-      onMouseOut={e => {
-        if (!active && !success) {
-          e.currentTarget.style.color = '#a7a7a7';
-          e.currentTarget.style.background = 'transparent';
-        }
-        e.currentTarget.style.transform = 'scale(1)';
-      }}
-    >
-      {icon}
-      {text && <span>{text}</span>}
-    </button>
-  );
-
   const getHeaderCoverImage = () => {
     const currentPl = userPlaylists.find(p => p._id === selectedPlaylist);
-    const firstTrackCover = filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : null;
+    const firstTrackCover = filteredPlaylist.length > 0 ? filteredPlaylist[0].albumId?.coverArt : null;
     if (currentPl?.playlistCover && currentPl.playlistCover.trim() !== '' && !currentPl.playlistCover.includes('Groove.png')) {
       return currentPl.playlistCover;
     }
@@ -185,9 +207,48 @@ export default function MainFeed({
       }} 
     >
       
-      {/* 1. CURATED SHELVES */}
+      {/* 1. CURATED SHELVES & DYNAMIC ALBUMS */}
       {activeCategory === 'All' && !selectedPlaylist && debouncedQuery.trim() === '' && (
         <div style={{ padding: '24px' }}>
+          
+          {/* ⚡ THE NEW DYNAMIC ALBUMS ROW ⚡ */}
+          {!isAlbumsLoading && albums.length > 0 && (
+            <div style={{ marginBottom: '50px', position: 'relative' }} className="jio-shelf-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px', color: '#fff', margin: 0 }}>Recently Added Albums</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => document.getElementById('shelf-recent-albums').scrollBy({ left: -360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }}>
+                    <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
+                  </button>
+                  <button onClick={() => document.getElementById('shelf-recent-albums').scrollBy({ left: 360, behavior: 'smooth' })} style={{ background: '#0a0a0a', border: '1px solid #333', color: '#fff', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: '0.2s', flexShrink: 0 }}>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+              <div id="shelf-recent-albums" style={{ display: 'flex', gap: '20px', overflowX: 'auto', scrollBehavior: 'smooth', padding: '16px 4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <style>{`#shelf-recent-albums::-webkit-scrollbar { display: none; }`}</style>
+                {albums.map(album => (
+                  <div 
+                    key={album._id} 
+                    // Note: This assumes you will create an /album/:id route soon! For now, it logs the ID.
+                    onClick={() => navigate(`/album/${album._id}`)} 
+                    className="curated-bento-card" 
+                    style={{ minWidth: '160px', maxWidth: '160px', cursor: 'pointer', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '16px', border: '1px solid #333', boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', flexShrink: 0 }}
+                  >
+                    <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
+                      <img src={album.coverArt || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={album.title} onError={(e) => e.target.src = "/Groove.png"} loading="lazy" />
+                    </div>
+                    <div style={{ padding: '0 2px' }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: '700', margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.title}</h4>
+                      <p style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', margin: 0 }}>Album</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Existing Curated Shelves */}
           {(() => {
             const categories = [...new Set(readyMadePlaylists.map(pl => pl.category || 'Featured'))];
             return categories.map(categoryName => {
@@ -214,8 +275,8 @@ export default function MainFeed({
                       return (
                         <div key={pl._id} onClick={() => navigate(`/playlist/${pl._id}`)} onContextMenu={(e) => handleContextMenu(e, pl._id, 'playlist', 'home')} className="curated-bento-card" style={{ minWidth: '160px', maxWidth: '160px', cursor: 'pointer', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '16px', border: '1px solid #333', boxShadow: '0 12px 24px rgba(0, 0, 0, 0.5)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative', flexShrink: 0 }}>
                           <div className="curated-art-wrapper" style={{ width: '100%', aspectRatio: '1/1', borderRadius: '10px', overflow: 'hidden', marginBottom: '10px', position: 'relative' }}>
-                            {/* ⚡ LAZY LOADING */}
-                            <img src={pl.songIds?.[0]?.cover || pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} onError={(e) => e.target.src = "/Groove.png"} loading="lazy" />
+                            {/* ⚡ UPDATED: Curated shelves cover image Optional Chaining */}
+                            <img src={pl.songIds?.[0]?.albumId?.coverArt || pl.playlistCover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={pl.name} onError={(e) => e.target.src = "/Groove.png"} loading="lazy" />
                           </div>
                           <div style={{ padding: '0 2px' }}>
                             <h4 style={{ fontSize: '13px', fontWeight: '700', margin: '0 0 4px 0', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pl.name}</h4>
@@ -243,7 +304,6 @@ export default function MainFeed({
             
             <div style={{ position: 'absolute', left: '10%', top: '0', width: '60%', height: '100%', background: '#10b981', filter: 'blur(180px)', opacity: 0.08, zIndex: 0, pointerEvents: 'none' }} />
 
-            {/* ⚡ THE FIX: flexWrap: 'nowrap' restores your exact side-by-side Layout! */}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(20px, 4cqw, 32px)', zIndex: 1, position: 'relative', flexWrap: 'nowrap' }}>
               
               <div 
@@ -295,7 +355,6 @@ export default function MainFeed({
                 </div>
               </div>
 
-              {/* ⚡ TEXT CONTAINER: flex: '1 1 0%' ensures it shrinks instead of pushing off screen */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', flex: '1 1 0%', minWidth: 0 }}>
                 
                 <div style={{ fontSize: 'clamp(10px, 1.5cqw, 12px)', fontWeight: '900', color: '#10b981', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
@@ -363,7 +422,7 @@ export default function MainFeed({
 
                         setUserPlaylists(prev => prev.map(p => {
                           if (p._id === selectedPlaylist) {
-                            const newFollowers = isCurrentlySaved ? p.followers.filter(id => id !== userId) : [...(p.followers || []), userId];       
+                            const newFollowers = isCurrentlySaved ? p.followers.filter(id => id !== userId) : [...(p.followers || []), userId];      
                             return { ...p, followers: newFollowers };
                           }
                           return p;
@@ -494,21 +553,21 @@ export default function MainFeed({
                       </div>
                       
                       {/* ⚡ LAZY LOADING ADDED HERE */}
-                      <img src={track.cover || "/Groove.png"} alt="" onError={(e) => { e.target.src = "/Groove.png"; }} 
+                      <img src={track.albumId?.coverArt || "/Groove.png"} alt="" onError={(e) => { e.target.src = "/Groove.png"; }} 
                         style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} 
                         loading="lazy"
                       />
                       
                       <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ fontSize: '15px', fontWeight: '700', color: isActive ? '#10b981' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
-                        <div style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</div>
+                        <div style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</div>
                       </div>
                       
                       <div style={{ fontSize: '13px', color: '#a7a7a7', fontWeight: '500', flexShrink: 0, width: '40px', textAlign: 'right' }}>
                         {formatTime(track.duration)}
                       </div>
                       
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', width: '32px', flexShrink: 0 }}>
                         <button 
                           onClick={(e) => {
                             e.preventDefault(); e.stopPropagation(); 
@@ -572,16 +631,17 @@ export default function MainFeed({
             </div>
 
             <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
-              {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
+              {/* ⚡ UPDATED: Add Track Modal Search Filter Optional Chaining */}
+              {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || (song.artists?.map(a => a.name).join(', ') || "").toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
                   const isAlreadyAdded = userPlaylists.find(p => p._id === selectedPlaylist)?.songIds?.some(s => (s._id || s) === song._id);
                   
                   return (
                     <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '12px', marginBottom: '4px', transition: 'all 0.2s', backgroundColor: 'transparent' }} onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', overflow: 'hidden' }}>
-                        {/* ⚡ LAZY LOADING ADDED HERE */}
+                        {/* ⚡ UPDATED: Add Track Modal Image Optional Chaining */}
                         <img 
-                          src={song.cover || "/Groove.png"} alt="" 
+                          src={song.albumId?.coverArt || "/Groove.png"} alt="" 
                           style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, opacity: isAlreadyAdded ? 0.5 : 1 }} 
                           loading="lazy"
                         />
@@ -589,8 +649,9 @@ export default function MainFeed({
                           <div style={{ fontSize: '14px', fontWeight: '700', color: isAlreadyAdded ? '#a7a7a7' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {song.title}
                           </div>
+                          {/* ⚡ UPDATED: Add Track Modal Artist Name Optional Chaining */}
                           <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {song.artist}
+                            {song.artists?.map(a => a.name).join(', ') || "Unknown Artist"}
                           </div>
                         </div>
                       </div>

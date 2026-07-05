@@ -58,7 +58,8 @@ export default function PlaylistDeck({
       <div className="groove-header-deck">
         <div className="deck-main-card">
           <div className="deck-art-frame">
-            <img src={filteredPlaylist.length > 0 ? filteredPlaylist[0].cover : "/Groove.png"} alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} />
+            {/* ⚡ UPDATED: Pulls the cover art from the new relational Album object */}
+            <img src={filteredPlaylist.length > 0 ? filteredPlaylist[0].albumId?.coverArt : "/Groove.png"} alt="Playlist Art" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} />
           </div>
           <div className="deck-details">
             {isEditingName ? (
@@ -186,7 +187,8 @@ export default function PlaylistDeck({
           </div>
         ) : (
           filteredPlaylist.map((track, index) => {
-            const displayCover = track.cover || "/Groove.png";
+            // ⚡ UPDATED: Changed track.cover to track.albumId?.coverArt
+            const displayCover = track.albumId?.coverArt || "/Groove.png";
             const isActive = playlist.findIndex(p => p._id === track._id) === currentTrackIndex && isPlaying;
             return (
               <div 
@@ -202,10 +204,11 @@ export default function PlaylistDeck({
                 onContextMenu={(e) => handleContextMenu(e, track._id, 'song')}
               >
                 <div className="track-id">{(index + 1).toString().padStart(2, '0')}</div>
-                <img src={displayCover} className="track-thumb" alt="" onError={(e) => { e.target.src = "/Groove.png"; }} />
+                <img src={displayCover} className="track-thumb" alt="" onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }} />
                 <div className="track-meta">
                   <div className="track-name-main" style={{ color: isActive ? '#10b981' : '#fff' }}>{track.title}</div>
-                  <div className="track-artist-sub">{track.artist}</div>
+                  {/* ⚡ UPDATED: Changed track.artist to track.artists?.map(a => a.name).join(', ') */}
+                  <div className="track-artist-sub">{track.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</div>
                 </div>
                 <div className="track-time">{formatTime(track.duration)}</div>
                 <div className="track-action-indicator">
@@ -235,15 +238,18 @@ export default function PlaylistDeck({
               </div>
             </div>
             <div className="bento-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
-              {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || song.artist.toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
+              {/* ⚡ UPDATED: Changed song.artist to (song.artists?.map(a => a.name).join(', ') || "") to prevent a crash on .toLowerCase() */}
+              {playlist.filter(song => song.title.toLowerCase().includes(addTrackSearch.toLowerCase()) || (song.artists?.map(a => a.name).join(', ') || "").toLowerCase().includes(addTrackSearch.toLowerCase())).map(song => {
                   const isAlreadyAdded = userPlaylists.find(p => p._id === selectedPlaylist)?.songIds?.some(s => (s._id || s) === song._id);
                   return (
                     <div key={song._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', borderRadius: '16px', marginBottom: '8px', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#1a1a1a'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <img src={song.cover || "/Groove.png"} alt="" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }} />
+                        {/* ⚡ UPDATED: Relational album cover art */}
+                        <img src={song.albumId?.coverArt || "/Groove.png"} alt="" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover' }} />
                         <div>
                           <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{song.title}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{song.artist}</div>
+                          {/* ⚡ UPDATED: Relational artist name */}
+                          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>{song.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</div>
                         </div>
                       </div>
                       {isAlreadyAdded ? (

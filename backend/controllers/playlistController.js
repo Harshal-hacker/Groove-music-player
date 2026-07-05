@@ -1,6 +1,14 @@
 const Playlist = require('../models/Playlist');
 const User = require('../models/User');
 
+const deepPopulateSongs = {
+  path: 'songIds',
+  populate: [
+    { path: 'artistId' },
+    { path: 'albumId' }
+  ]
+};
+
 exports.createCurated = async (req, res) => {
   try { 
     const { name, userId, category } = req.body;
@@ -150,7 +158,7 @@ exports.getPlaylists = async (req, res) => {
       queryCondition = { isReadyMade: true };
     }
 
-    const playlists = await Playlist.find(queryCondition).populate('songIds');
+    const playlists = await Playlist.find(queryCondition).populate(deepPopulateSongs);
     res.status(200).json(playlists);
   } catch (err) {
     console.error("Critical Playlist Fetch Error:", err);
@@ -160,13 +168,14 @@ exports.getPlaylists = async (req, res) => {
 
 exports.addSong = async (req, res) => {
   try {
-    const { songId, userId } = req.body;
+    const { songId } = req.body; // Remove userId from body
+    const userId = req.user.userId; // Always use the secure token
+    
     const playlist = await Playlist.findById(req.params.id);
-
     if (!playlist) return res.status(404).json({ error: "Not found" });
 
     if (playlist.isReadyMade) {
-      const user = await User.findById(userId);
+      const user = await User.findById(userId); // Use the secure ID
       if (!user || user.role !== 'admin') {
         return res.status(403).json({ message: "Ready-made playlists cannot be modified by standard users." });
       }
@@ -175,7 +184,7 @@ exports.addSong = async (req, res) => {
     playlist.songIds.addToSet(songId);
     await playlist.save();
     
-    const freshlyPopulatedPlaylist = await Playlist.findById(req.params.id).populate('songIds');
+    const freshlyPopulatedPlaylist = await Playlist.findById(req.params.id).populate(deepPopulateSongs);
     res.json(freshlyPopulatedPlaylist);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -189,7 +198,7 @@ exports.removeSong = async (req, res) => {
       req.params.id,
       { $pull: { songIds: songId } }, 
       { new: true }
-    ).populate('songIds');            
+    ).populate(deepPopulateSongs);            
     
     res.json(updatedPlaylist);
   } catch (err) {
@@ -198,10 +207,8 @@ exports.removeSong = async (req, res) => {
 };
 
 exports.followPlaylist = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.userId; // Pull directly from token
   const playlistId = req.params.id;
-
-  if (!userId) return res.status(400).json({ message: "User ID context is required." });
 
   try {
     const playlist = await Playlist.findById(playlistId);
@@ -217,7 +224,7 @@ exports.followPlaylist = async (req, res) => {
 
     await playlist.save();
     
-    const updatedPlaylist = await Playlist.findById(playlistId).populate('songIds');
+    const updatedPlaylist = await Playlist.findById(playlistId).populate(deepPopulateSongs);
     res.status(200).json(updatedPlaylist);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -234,7 +241,7 @@ exports.editPlaylistDetails = async (req, res) => {
       playlistId,
       { name, playlistCover, category },
       { new: true } // Returns the updated document
-    ).populate('songIds'); // Ensures the tracks are still attached to the response
+    ).populate(deepPopulateSongs); // Ensures the tracks are still attached to the response
 
     if (!updatedPlaylist) {
       return res.status(404).json({ message: "Playlist not found" });
@@ -255,7 +262,7 @@ exports.getAdminPlaylists = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const adminPlaylists = await Playlist.find({ isReadyMade: true })
-      .populate('songIds')
+      .populate(deepPopulateSongs)
       .skip(skip)
       .limit(limit);
 
@@ -286,7 +293,7 @@ exports.getUserLibrary = async (req, res) => {
         { createdBy: userId },
         { followers: userId }
       ]
-    }).populate('songIds');
+    }).populate(deepPopulateSongs);
 
     res.status(200).json(myPlaylists);
   } catch (err) {

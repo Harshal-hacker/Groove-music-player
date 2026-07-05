@@ -115,10 +115,12 @@ export default function Profile({ userData, userPlaylists, playlist, setCurrentT
                 onMouseOut={(e) => { e.currentTarget.style.background = '#0a0a0a'; e.currentTarget.style.borderColor = '#222'; }}
               >
                 <div style={{ color: '#64748b', fontWeight: '800', fontSize: '14px', width: '20px' }}>{index + 1}</div>
-                <img src={track.cover || "/Groove.png"} alt="" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                {/* ⚡ UPDATED: Changed track.cover to track.albumId?.coverArt */}
+                <img src={track.albumId?.coverArt || "/Groove.png"} alt="" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>{track.title}</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>{track.artist}</div>
+                  {/* ⚡ UPDATED: Changed track.artist to track.artists?.map(a => a.name).join(', ') */}
+                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>{track.artists?.map(a => a.name).join(', ') || "Unknown Artist"}</div>
                 </div>
                 <Play size={18} color="#10b981" />
               </div>

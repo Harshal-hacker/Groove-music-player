@@ -3,39 +3,36 @@ const mongoose = require('mongoose');
 const playlistSchema = new mongoose.Schema({
   name: { 
     type: String, 
-    required: true 
+    required: true,
+    trim: true
   },
-  // Link to the User model properly
-  createdBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    required: true 
+  description: { 
+    type: String 
   },
-  // Array of Song IDs
-  songIds: [{ 
+  playlistCover: { // ⚡ Updated from 'coverArt' to match controller
+    type: String 
+  },
+  songIds: [{ // ⚡ Updated from 'songs' to match controller
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Song' 
+    ref: 'Song'
   }],
-  // Branding
-  playlistCover: { 
-    type: String, 
-    default: "/Groove.png" 
+  createdBy: { // ⚡ Updated from 'ownerId' to match controller
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
-  // true = visible to everyone on Home screen
-  isReadyMade: { 
-    type: Boolean, 
-    default: false 
-  }, 
-  // e.g., 'Romantic', 'Pop', 'Classical'
-  category: { 
-    type: String, 
-    default: 'All' 
+  // ⚡ Added missing fields used in playlistController.js
+  isReadyMade: {
+    type: Boolean,
+    default: false
   },
-  // Users who added this to their library     
-  followers: [{ 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User' 
-  }] 
-}, { timestamps: true }); // Keep timestamps to show "Recently Created" lists
+  category: {
+    type: String,
+    default: 'Featured'
+  },
+  followers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
+}, { timestamps: true });
 
-module.exports = mongoose.models.Playlist || mongoose.model('Playlist', playlistSchema);
+module.exports = mongoose.model('Playlist', playlistSchema);

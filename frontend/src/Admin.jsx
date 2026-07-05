@@ -1,24 +1,28 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Music, Image as ImageIcon, UploadCloud, FolderPlus, ArrowLeft, CheckCircle2, Loader2, Trash2, Edit3, Search, AlertCircle } from 'lucide-react';
 import { API_BASE_URL } from './config';
 import axios from 'axios';
 import jsmediatags from 'jsmediatags';
-import { usePlayer } from './context/PlayerContext'; // <-- 1. IMPORT CONTEXT
+import { usePlayer } from './context/PlayerContext';
 import SuccessModal from './components/SuccessModal';
+import AutoImport from './components/AutoImport';
 
-function Admin({ 
-  onBack, 
-  uploadProgress, 
-  setUploadProgress, 
-  isUploading, 
-  setIsUploading, 
-  setOverallProgress, 
-  setUploadStats, 
-  setPlaylist,
-  handleRemoveFromPlaylist
-}) {
-  
-  // 2. SECURE IDENTITY STATE
+function Admin(){ 
+  const navigate = useNavigate();
+
+  const { 
+    onBack,
+    setPlaylist,
+    uploadProgress, 
+    setUploadProgress, 
+    isUploading, 
+    setIsUploading, 
+    setOverallProgress, 
+    setUploadStats,
+    handleRemoveFromPlaylist
+  } = usePlayer();
+   
   // --- Form State ---
   const [songData, setSongData] = useState({ title: '', artist: '', duration: 0 });
   const [audioFile, setAudioFile] = useState(null);
@@ -34,7 +38,7 @@ function Admin({
 
   // Fetch library for management
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/songs`, { credentials: 'include' }) // <-- SECURED
+    fetch(`${API_BASE_URL}/api/songs`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => setExistingSongs(data));
   }, []);
@@ -62,12 +66,12 @@ function Admin({
 
   const handleDelete = async (id) => {
     if (!window.confirm("Permanent delete?")) return;
-    const userId = currentUser?._id; // <-- CONTEXT IDENTITY
+    const userId = currentUser?._id; 
     
     try {
       const res = await fetch(`${API_BASE_URL}/api/songs/${id}?userId=${userId}`, {
         method: 'DELETE',
-        credentials: 'include' // <-- SECURED
+        credentials: 'include' 
       });
 
       if (res.ok) {
@@ -83,12 +87,16 @@ function Admin({
 
   const handleEditClick = (song) => {
     setEditingSongId(song._id);
+    
+    // ⚡ UPDATED: Safely pull the relational Artist name to populate the edit form
     setSongData({ 
       title: song.title, 
-      artist: song.artist, 
+      artist: song.artists?.map(a => a.name).join(', ') || "Unknown Artist", 
       duration: song.duration || 0 
     });
-    setPreview(song.cover);
+    
+    // ⚡ UPDATED: Safely pull the relational Album cover art to populate the preview
+    setPreview(song.albumId?.coverArt || null);
     
     const formPanel = document.querySelector('.bento-scrollbar');
     if (formPanel) formPanel.scrollTo({ top: 0, behavior: 'smooth' });
@@ -101,7 +109,7 @@ function Admin({
     const formData = new FormData();
     formData.append('title', songData.title);
     formData.append('artist', songData.artist);
-    formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
+    formData.append('userId', currentUser?._id); 
     formData.append('duration', songData.duration);
     
     if (audioFile) formData.append('audio', audioFile);
@@ -117,7 +125,7 @@ function Admin({
       const res = await fetch(url, { 
         method: method, 
         body: formData,
-        credentials: 'include' // <-- SECURED
+        credentials: 'include'
       });
       
       if (res.ok) {
@@ -164,14 +172,12 @@ function Admin({
     setIsUploading(true);
     setUploadStats({ current: 1, total: audioFiles.length });
     const fileProgressTracker = new Array(audioFiles.length).fill(0);
-    const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0); // Calculate total size once
+    const totalBytesAllFiles = audioFiles.reduce((sum, f) => sum + f.size, 0); 
 
-    // ⚡ NEW: Initialize the queue with all files set to 'pending' before the loop starts
     setUploadQueue(audioFiles.map(f => ({ name: f.name, progress: 0, status: 'pending' })));
     
     const extractMetadata = (file) => {
       return new Promise((resolve) => {
-        // ⚡ 1. Wrap it in the native audio reader to get the duration!
         const tempAudio = new Audio(URL.createObjectURL(file));
         
         tempAudio.onloadedmetadata = () => {
@@ -181,34 +187,31 @@ function Admin({
             onSuccess: (tag) => {
               const title = tag.tags.title || file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, "");
               const artist = tag.tags.artist || "Unknown Artist";
+              const album = tag.tags.album || folderName || "Miscellaneous Tracks"; // ⚡ Pull the album for the relational DB!
+              
               let coverBlobFile = null;
               if (tag.tags.picture) {
                 const { data, format } = tag.tags.picture;
                 coverBlobFile = new File([new Blob([new Uint8Array(data)], { type: format })], `cover-${Date.now()}.jpg`, { type: format });
               }
-              // ⚡ 2. Make sure duration is passed back out
-              resolve({ title, artist, coverFile: coverBlobFile, duration }); 
+              resolve({ title, artist, album, coverFile: coverBlobFile, duration }); 
             },
             onError: () => {
-              resolve({ title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""), artist: "Unknown Artist", coverFile: null, duration });
+              resolve({ title: file.name.replace(/\.[^/.]+$/, "").replace(/_spotdown\.org/g, ""), artist: "Unknown Artist", album: "Miscellaneous Tracks", coverFile: null, duration });
             }
           });
         };
         
-        tempAudio.onerror = () => resolve({ title: file.name, artist: "Unknown", coverFile: null, duration: 0 });
+        tempAudio.onerror = () => resolve({ title: file.name, artist: "Unknown", album: "Miscellaneous Tracks", coverFile: null, duration: 0 });
       });
     };
 
-    // ⚡ 1. NEW: Create the kill switch and save it to the global context
     const controller = new AbortController();
     setUploadAbortController(controller);
 
     try {
-      const uploadedTracks = []; // Array to collect successful uploads
+      const uploadedTracks = []; 
 
-      // ========================================================
-      // 🚀 THE FIX: SEQUENTIAL UPLOAD LOOP (NO MORE PROMISE.ALL)
-      // ========================================================
       for (let index = 0; index < audioFiles.length; index++) {
         const file = audioFiles[index];
         
@@ -216,16 +219,16 @@ function Admin({
           const metadata = await extractMetadata(file);
           const formData = new FormData();
           formData.append('audio', file);
-          formData.append('userId', currentUser?._id); // <-- CONTEXT IDENTITY
+          formData.append('userId', currentUser?._id); 
           formData.append('title', metadata.title);
           formData.append('artist', metadata.artist);
+          formData.append('album', metadata.album); // ⚡ Pass the album to the new backend!
           formData.append('duration', metadata.duration);
           if (metadata.coverFile) formData.append('cover', metadata.coverFile);
 
-          // We await THIS specific upload before moving to the next loop iteration
           const res = await axios.post(`${API_BASE_URL}/api/songs/upload`, formData, {
-            withCredentials: true, // <-- AXIOS SECURE COOKIE ATTACHMENT
-            signal: controller.signal, // ⚡ 2. NEW: Attach the kill switch to Axios!
+            withCredentials: true, 
+            signal: controller.signal, 
             onUploadProgress: (progressEvent) => {
               fileProgressTracker[index] = progressEvent.loaded;
               const totalLoadedBytes = fileProgressTracker.reduce((sum, bytes) => sum + bytes, 0);
@@ -233,7 +236,6 @@ function Admin({
               setOverallProgress(globalPercentage);
               setUploadProgress(globalPercentage);
 
-              // ⚡ NEW: Update this specific file's progress in the visual queue
               const filePercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
               setUploadQueue(prev => prev.map(item => 
                 item.name === file.name ? { ...item, progress: filePercent, status: 'uploading' } : item
@@ -241,55 +243,44 @@ function Admin({
             }
           });
 
-          uploadedTracks.push(res.data); // Save the track if successful
+          uploadedTracks.push(res.data); 
 
-          // ⚡ NEW: Mark the file as perfectly completed!
           setUploadQueue(prev => prev.map(item => 
             item.name === file.name ? { ...item, progress: 100, status: 'completed' } : item
           ));
           
-          // Only update the "current" file count text if we aren't on the very last file
           if (index < audioFiles.length - 1) {
             setUploadStats(prev => ({ ...prev, current: prev.current + 1 }));
           }
 
         } catch (fileErr) {
-          // ⚡ 3. NEW: If the error is an Abort, break the loop immediately!
           if (axios.isCancel(fileErr)) {
             console.log("🛑 Upload pipeline terminated by user.");
-            break; // This word instantly stops the 'for' loop from moving to the next file
+            break; 
           }
-          // ⚡ THE FIX: Check if the server responded with our friendly 409 Duplicate code
           if (fileErr.response && fileErr.response.status === 409) {
             console.warn(`⏭️ Skipped duplicate: ${file.name}`);
-            // ⚡ NEW: Mark as skipped in the UI so the user knows it wasn't an error
             setUploadQueue(prev => prev.map(item => 
               item.name === file.name ? { ...item, status: 'skipped' } : item
             ));
-            continue; // 🚀 Tells the loop to ignore this and jump to the next song!
+            continue; 
           }
           
-          // If it is a REAL error (like a 500 Server Crash), log it in red
           console.error(`❌ Failed to upload ${file.name}:`, fileErr);
-          // ⚡ NEW: Mark as error in the UI
           setUploadQueue(prev => prev.map(item => 
             item.name === file.name ? { ...item, status: 'error' } : item
           ));
         }
       }
-      // ========================================================
 
-      // Check if anything actually uploaded successfully
       if (uploadedTracks.length === 0) {
         throw new Error("All track uploads failed.");
       }
       
-      // Update global React State
       if (typeof setPlaylist === 'function') {
         setPlaylist(prev => [...uploadedTracks, ...prev]);
       }
 
-      // Automatically group them into a folder
       const newlyCreatedSongIds = uploadedTracks.map(track => track._id);
       
       const curationResponse = await fetch(`${API_BASE_URL}/api/playlists/bulk-curate`, {
@@ -298,9 +289,9 @@ function Admin({
         body: JSON.stringify({
           playlistName: folderName,
           songIds: newlyCreatedSongIds,
-          userId: currentUser?._id // <-- CONTEXT IDENTITY
+          userId: currentUser?._id 
         }),
-        credentials: 'include' // <-- SECURED
+        credentials: 'include' 
       });
 
       if (curationResponse.ok) {
@@ -314,7 +305,6 @@ function Admin({
       console.error("Pipeline breakdown:", err);
       alert("An error occurred during multi-file streaming.");
     } finally {
-      // ⚡ 4. NEW: Clean up the kill switch when the upload is totally finished
       setUploadAbortController(null);
       setTimeout(() => {
         setIsUploading(false);
@@ -342,10 +332,10 @@ function Admin({
         </div>
       </nav>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div className="admin-layout" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         
-        {/* LEFT: UPLOAD FORM (Fixed Width) */}
-        <div style={{ width: '400px', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '40px', overflowY: 'auto' }} className="bento-scrollbar"> 
+        {/* LEFT: UPLOAD FORM */}
+        <div className="admin-left bento-scrollbar" style={{ width: '400px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.05)', padding: '40px', overflowY: 'auto' }}> 
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -364,17 +354,8 @@ function Admin({
                   setCoverFile(null); 
                 }}
                 style={{ 
-                  width: '35px',
-                  height: '35px',
-                  borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  padding: 0,
-                  transition: 'all 0.2s ease'
+                  width: '35px', height: '35px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, transition: 'all 0.2s ease'
                 }}
                 onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
@@ -385,7 +366,6 @@ function Admin({
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Visual Dropzone */}
             <div style={{
               height: '180px', borderRadius: '24px', backgroundColor: 'rgba(255,255,255,0.02)',
               border: '2px dashed rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
@@ -403,34 +383,21 @@ function Admin({
                     }}
                   />
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }} onMouseOver={(e) => e.currentTarget.style.opacity=1} onMouseOut={(e) => e.currentTarget.style.opacity=0}>
-                    <p style={{ fontWeight: '80x0', fontSize: '12px' }}>CHANGE COVER</p>
+                    <p style={{ fontWeight: '800', fontSize: '12px' }}>CHANGE COVER</p>
                   </div>
                 </>
               ) : (
                 <div className="preview-box" style={{ 
-                  position: 'relative',
-                  width: '100%', 
-                  height: '200px', 
-                  border: '2px dashed rgba(255,255,255,0.1)', 
-                  borderRadius: '24px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  background: 'rgba(255,255,255,0.02)'
+                  position: 'relative', width: '100%', height: '200px', border: '2px dashed rgba(255,255,255,0.1)', 
+                  borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', background: 'rgba(255,255,255,0.02)'
                 }}>
                   {preview ? (
                     <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
                   ) : (
                     <div style={{ textAlign: 'center', opacity: 0.3 }}>
-                      <img 
-                        src="/Groove.png" 
-                        style={{ width: '180px', marginBottom: '10px', filter: 'grayscale(1)' }} 
-                        alt="Groove Logo Placeholder" 
-                      />
-                      <p style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '2px', color: '#fff' }}>
-                        DRAG COVER ART
-                      </p>
+                      <img src="/Groove.png" style={{ width: '180px', marginBottom: '10px', filter: 'grayscale(1)' }} alt="Groove Logo Placeholder" />
+                      <p style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '2px', color: '#fff' }}>DRAG COVER ART</p>
                     </div>
                   )}
                 </div>
@@ -439,7 +406,6 @@ function Admin({
               <button type="button" onClick={() => document.querySelector('input[accept="image/*"]').click()} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
             </div>
 
-            {/* Audio Picker */}
             <div style={{ padding: '20px', borderRadius: '20px', backgroundColor: audioFile ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', transition: '0.3s' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: audioFile ? '#10b981' : 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -450,12 +416,7 @@ function Admin({
                 </div>
                 <button type="button" onClick={() => document.querySelector('input[accept="audio/*"]').click()} style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: '800', fontSize: '11px', cursor: 'pointer' }}>BROWSE</button>
               </div>
-              <input 
-                type="file" 
-                hidden 
-                accept="audio/*" 
-                onChange={handleAudioChange} 
-              />
+              <input type="file" hidden accept="audio/*" onChange={handleAudioChange} />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -488,53 +449,39 @@ function Admin({
               Import Media
             </h3>
             
-            <div style={{
-              width: '100%', padding: '30px', border: '2px dashed rgba(16, 185, 129, 0.3)',
-              borderRadius: '24px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)',
-            }}>
+            <div style={{ width: '100%', padding: '30px', border: '2px dashed rgba(16, 185, 129, 0.3)', borderRadius: '24px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.02)' }}>
               <div style={{ marginBottom: '15px' }}>
                 <img src="/Groove.png" alt="" style={{ width: '40px', opacity: 0.5 }} />
               </div>
               <h4 style={{ margin: '0 0 15px 0', fontSize: '14px' }}>Add Tracks to Library</h4>
               
-              {/* SPLIT BUTTONS */}
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                 <button 
                   type="button"
                   onClick={() => document.getElementById('bulk-folder-input').click()}
-                  style={{
-                    flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)',
-                    color: '#10b981', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
-                  }}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s' }}
                   onMouseOver={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)'}
                   onMouseOut={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
-                >
-                  BROWSE FOLDER
-                </button>
+                >BROWSE FOLDER</button>
                 
                 <button 
                   type="button"
                   onClick={() => document.getElementById('bulk-files-input').click()}
-                  style={{
-                    flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)',
-                    color: '#fff', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s'
-                  }}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: 'none', fontSize: '12px', fontWeight: '800', cursor: 'pointer', transition: '0.2s' }}
                   onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                   onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                >
-                  SELECT FILES
-                </button>
+                >SELECT FILES</button>
               </div>
 
-              {/* Hidden Inputs Stay Exactly the Same */}
               <input id="bulk-folder-input" type="file" webkitdirectory="true" directory="true" multiple style={{ display: 'none' }} onChange={handleFolderUpload} />
               <input id="bulk-files-input" type="file" multiple accept="audio/*" style={{ display: 'none' }} onChange={handleFolderUpload} />
             </div>
+            <AutoImport />
           </div>
         </div>
 
         {/* RIGHT: LIBRARY MANAGEMENT */}
-        <div style={{ flex: 1, padding: '40px', backgroundColor: 'rgba(255,255,255,0.01)', overflowY: 'auto' }} className="bento-scrollbar">
+        <div className="admin-right bento-scrollbar" style={{ flex: 1, minWidth: '300px', padding: '40px', backgroundColor: 'rgba(255,255,255,0.01)', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Manage Library</h2>
             <div style={{ position: 'relative', width: '250px' }}>
@@ -547,23 +494,30 @@ function Admin({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {existingSongs.filter(s => s.title.toLowerCase().includes(mgmtSearch.toLowerCase())).map(song => (
+            {/* ⚡ UPDATED: Safely checks both the title AND the nested artist name for the search bar */}
+            {existingSongs.filter(s => 
+              s.title.toLowerCase().includes(mgmtSearch.toLowerCase()) || 
+              (s.artists?.map(a => a.name).join(', ') || "").toLowerCase().includes(mgmtSearch.toLowerCase())
+            ).map(song => (
               <div key={song._id} className="mgmt-card" style={{
                 display: 'flex', alignItems: 'center', padding: '12px 20px', backgroundColor: 'rgba(255,255,255,0.02)',
                 borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', gap: '20px'
               }}>
+                {/* ⚡ UPDATED: Pulls the cover art from the linked Album document */}
                 <img 
-                  src={song.cover || "/Groove.png"} 
+                  src={song.albumId?.coverArt || "/Groove.png"} 
                   style={{ width: '45px', height: '45px', borderRadius: '8px', objectFit: 'cover' }}
                   alt="" 
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = "/Groove.png";
-                  }}
+                  onError={(e) => { e.target.onerror = null; e.target.src = "/Groove.png"; }}
                 />
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700' }}>{song.title}</h4>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>{song.artist}</p>
+                <div style={{ flex: 1, minWidth: 0 }}> 
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {song.title}
+                  </h4>
+                  {/* ⚡ UPDATED: Pulls the artist name from the linked Artist document */}
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {song.artists?.map(a => a.name).join(', ') || "Unknown Artist"}
+                  </p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button className="mgmt-btn" onClick={() => handleEditClick(song)} style={{ color: '#64748b' }}><Edit3 size={16} /></button>
@@ -587,24 +541,17 @@ function Admin({
           font-size: 14px;
           transition: 0.3s;
         }
-        .studio-input:focus {
-          border-color: #10b981;
-          background: rgba(16, 185, 129, 0.05);
-        }
-        .mgmt-card:hover {
-          background-color: rgba(255,255,255,0.05) !important;
-          transform: translateX(5px);
-        }
-        .mgmt-btn {
-          width: 36px; height: 36px; border-radius: 10px; border: none;
-          background: rgba(255,255,255,0.03); cursor: pointer; transition: 0.2s;
-          display: flex; align-items: center; justify-content: center;
-        }
+        .studio-input:focus { border-color: #10b981; background: rgba(16, 185, 129, 0.05); }
+        .mgmt-card:hover { background-color: rgba(255,255,255,0.05) !important; transform: translateX(5px); }
+        .mgmt-btn { width: 36px; height: 36px; border-radius: 10px; border: none; background: rgba(255,255,255,0.03); cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
         .mgmt-btn:hover { background: rgba(255,255,255,0.1); }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @media (max-width: 950px) {
+          .admin-layout { flex-direction: column !important; overflow-y: auto !important; }
+          .admin-left { width: 100% !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.05) !important; overflow-y: visible !important; }
+          .admin-right { width: 100% !important; overflow-y: visible !important; }
+        }
       `}</style>
 
-      {/* ⚡ Drop the Success Modal right here at the bottom */}
       <SuccessModal 
         isOpen={successAlert.isOpen} 
         message={successAlert.message}

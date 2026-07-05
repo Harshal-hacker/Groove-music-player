@@ -1,70 +1,56 @@
-require('dotenv').config(); // 1. Load the .env file
-
+require('dotenv').config(); 
 const express = require('express');
 const router = express.Router();
+
+// ⚡ FIX 1: Import the entire controller as one object so songController.xxx works!
 const songController = require('../controllers/songController');
-const { verifyToken } = require('../middleware/authMiddleware'); 
+const { verifyToken } = require('../middleware/authMiddleware');
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
 
-// ⚡ 2. THE MISSING LINK: You MUST configure Cloudinary right here! ⚡
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+// Ensure an uploads directory exists on your local machine
+if (!fs.existsSync('./uploads')) {
+    fs.mkdirSync('./uploads');
+}
+
+// Configure Local Storage (Required for AcoustID fingerprinting)
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, './uploads/')
+  },
+  filename: function (req, file, cb) {
+    // Generate a unique safe filename
+    cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'))
+  }
 });
+const upload = multer({ storage: storage });
 
-// 3. Now, when Multer grabs 'cloudinary', it actually has the keys inside it!
-const storage = new CloudinaryStorage({ 
-  cloudinary, // This is now fully configured
-  params: async (req, file) => {
-    let targetFolder = 'groove_music'; 
-
-    if (file.fieldname === 'cover') {
-      targetFolder = 'groove_images';
-    }
-
-    return {
-      folder: targetFolder, 
-      resource_type: 'auto',
-      timeout: 300000 
-    };
-  } 
-});
-
-const upload = multer({ storage });
-
-// 👉 Custom Middleware to catch Cloudinary/Multer crashes
+// Custom Middleware: "Safe Upload" wrapper
 const safeUpload = (req, res, next) => {
   const uploadFields = upload.fields([{ name: 'audio' }, { name: 'cover' }]);
   uploadFields(req, res, (err) => {
     if (err) {
-      console.error("Multer/Cloudinary Error:", err);
-      return res.status(500).json({ message: "Upload stream error.", details: err.message });
+      console.error("Multer Error:", err);
+      return res.status(500).json({ message: "Upload stream error." });
     }
-    next(); // If no errors, move to the controller!
+    next();
   });
 };
 
-// 👉 Pre-Flight Check (Fast, Text-Only)
+// ==========================================
+// ROUTES
+// ==========================================
 router.post('/check', verifyToken, songController.checkDuplicate);
-
 router.get('/search', songController.searchSongs);
+router.post('/import', verifyToken, songController.importSongOnline);
 
-// 👉 1. Upload a new song (Protected + Safe Upload)
+// ⚡ FIX 2: Used verifyToken (your actual middleware) and songController.importAlbumOnline
+router.post('/import-album', verifyToken, songController.importAlbumOnline);
+
 router.post('/upload', verifyToken, safeUpload, songController.uploadSong);
-
-// 👉 2. Fetch all songs (Public)
 router.get('/', songController.getAllSongs);
-
-// 👉 3. Update song duration (Protected)
 router.patch('/:id/duration', verifyToken, songController.updateSongDuration);
-
-// 👉 4. Update song metadata or files (Protected + Safe Upload)
 router.patch('/:id', verifyToken, safeUpload, songController.updateSong);
-
-// 👉 5. Delete a song (Protected)
 router.delete('/:id', verifyToken, songController.deleteSong);
 
 module.exports = router;

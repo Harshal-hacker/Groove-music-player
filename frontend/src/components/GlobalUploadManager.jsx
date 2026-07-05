@@ -15,20 +15,10 @@ const GlobalUploadManager = () => {
 
   return (
     <div 
-      onClick={(e) => {
-        e.stopPropagation();
-
-        // ⚡ NEW: If an upload is running, kill it!
-        if (uploadAbortController) {
-            uploadAbortController.abort(); 
-        }
-            setUploadQueue([]); // Hide the UI
-        }}
       style={{
         position: 'fixed', 
         bottom: '115px', 
-        /* ⚡ MOVED TO THE LEFT */
-        left: '13px', /* Tip: Change this to '280px' if you want it to sit slightly right of your sidebar! */
+        left: '13px', 
         width: '317px', 
         backgroundColor: '#18181b', 
         borderRadius: '25px', 
@@ -79,10 +69,15 @@ const GlobalUploadManager = () => {
             ▼
           </div>
 
-          {/* ⚡ THE NEW CLOSE BUTTON */}
+          {/* ⚡ THE NEW CLOSE BUTTON (Kill switch moved here!) */}
           <div 
             onClick={(e) => {
               e.stopPropagation(); // Stops the click from triggering the minimize toggle
+              
+              // ⚡ NEW: Only abort the upload if the user explicitly clicks the "X" button
+              if (uploadAbortController) {
+                uploadAbortController.abort(); 
+              }
               setUploadQueue([]);  // Clears the data, which instantly closes the entire box!
             }}
             style={{ 

@@ -110,7 +110,8 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden', minWidth: '240px' }}>
           {/* ⚡ COMPACT FIX: Shrunk album art from 56px to 48px */}
           <div style={{ position: 'relative', width: '48px', height: '48px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-            <img src={currentTrack?.cover || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={(e) => e.target.src = "/Groove.png"} />
+            {/* ⚡ FIX: Relational Album Cover Art */}
+            <img src={currentTrack?.albumId?.coverArt || "/Groove.png"} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={(e) => e.target.src = "/Groove.png"} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', width: '100%' }}>
             <div className="sliding-text-container">
@@ -121,7 +122,8 @@ export default function PlayerDeck({ isQueueOpen, setIsQueueOpen }) {
             </div>
             {/* ⚡ COMPACT FIX: Adjusted artist font size 12px -> 11px */}
             <p style={{ margin: '1px 0 0', fontSize: '11px', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {currentTrack?.artist || "Standby"}
+              {/* ⚡ FIX: Relational Artist Name */}
+              {currentTrack?.artists?.map(a => a.name).join(', ') || "Standby"}
             </p>
           </div>
         </div>
