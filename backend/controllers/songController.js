@@ -109,18 +109,19 @@ exports.uploadSong = async (req, res) => {
 
     const audioResult = await cloudinary.uploader.upload(req.files['audio'][0].path, { 
       resource_type: "video", 
-      folder: "groove_music" 
+      folder: "groove_music",
+      timeout: 120000 // ⚡ Prevent Cloudinary 499 Error
     });
     const audioUrl = audioResult.secure_url;
     
     if (req.files['cover']) {
        const coverResult = await cloudinary.uploader.upload(req.files['cover'][0].path, { 
-         resource_type: "image", folder: "groove_images" 
+         resource_type: "image", folder: "groove_images", timeout: 120000
        });
        enrichedData.coverArt = coverResult.secure_url;
     } else if (enrichedData.coverArt && enrichedData.coverArt.startsWith('data:image')) {
        const coverResult = await cloudinary.uploader.upload(enrichedData.coverArt, {
-         resource_type: "image", folder: "groove_images"
+         resource_type: "image", folder: "groove_images", timeout: 120000
        });
        enrichedData.coverArt = coverResult.secure_url;
     }
@@ -234,7 +235,9 @@ exports.updateSong = async (req, res) => {
         const oldPublicId = song.audioUrl.split('/').pop().split('.')[0];
         await cloudinary.uploader.destroy(`groove_music/${oldPublicId}`, { resource_type: 'video' });
       }
-      const newUpload = await cloudinary.uploader.upload(req.files['audio'][0].path, { resource_type: "video", folder: "groove_music" });
+      const newUpload = await cloudinary.uploader.upload(req.files['audio'][0].path, { 
+          resource_type: "video", folder: "groove_music", timeout: 120000 
+      });
       updateData.audioUrl = newUpload.secure_url;
       fs.unlinkSync(req.files['audio'][0].path);
     }
@@ -320,7 +323,7 @@ exports.importSongOnline = async (req, res) => {
 
     try {
         await youtubedl(cleanUrl, {
-            f: '22/18/ba/b', // ⚡ THE GOLDEN BYPASS: Try 720p/360p multiplexed formats before encrypted audio
+            f: 'ba[ext=m4a]/ba', // ⚡ Force pure, lightweight audio stream (avoids ffmpeg & huge files)
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
@@ -344,12 +347,16 @@ exports.importSongOnline = async (req, res) => {
 
     console.log("☁️ Uploading audio to Cloudinary...");
     const audioResult = await cloudinary.uploader.upload(targetFile, { 
-      resource_type: "video", folder: "groove_music" 
+      resource_type: "video", 
+      folder: "groove_music",
+      timeout: 120000 // ⚡ Prevent Cloudinary 499 Timeout
     });
     
     console.log("☁️ Uploading cover art to Cloudinary...");
     const coverResult = await cloudinary.uploader.upload(itunesData.coverArt, {
-      resource_type: "image", folder: "groove_images"
+      resource_type: "image", 
+      folder: "groove_images",
+      timeout: 120000
     });
 
     console.log("💾 Saving organized data to MongoDB...");
@@ -402,7 +409,9 @@ exports.importAlbumOnline = async (req, res) => {
     console.log(`✅ Found Album with ${tracks.length} tracks. Starting mass download...`);
 
     console.log("☁️ Uploading Master Album cover art to Cloudinary...");
-    const coverResult = await cloudinary.uploader.upload(tracks[0].coverArt, { resource_type: "image", folder: "groove_images" });
+    const coverResult = await cloudinary.uploader.upload(tracks[0].coverArt, { 
+        resource_type: "image", folder: "groove_images", timeout: 120000 
+    });
     const coverUrl = coverResult.secure_url;
 
     let importedSongs = [];
@@ -450,7 +459,7 @@ exports.importAlbumOnline = async (req, res) => {
 
             try {
                 await youtubedl(cleanUrl, { 
-                    f: '22/18/ba/b', // ⚡ THE GOLDEN BYPASS: Try 720p/360p multiplexed formats before encrypted audio
+                    f: 'ba[ext=m4a]/ba', // ⚡ Force pure audio stream
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
@@ -472,7 +481,11 @@ exports.importAlbumOnline = async (req, res) => {
             const downloadedFiles = fs.readdirSync(uniqueDir);
             const targetFile = path.join(uniqueDir, downloadedFiles[0]);
             
-            const audioResult = await cloudinary.uploader.upload(targetFile, { resource_type: "video", folder: "groove_music" });
+            const audioResult = await cloudinary.uploader.upload(targetFile, { 
+                resource_type: "video", 
+                folder: "groove_music",
+                timeout: 120000 // ⚡ Prevent Cloudinary 499 Timeout
+            });
             
             const albumDoc = await Album.findOneAndUpdate(
               { title: { $regex: new RegExp(`^${escapeRegex(track.albumTitle)}$`, 'i') } },
@@ -497,7 +510,6 @@ exports.importAlbumOnline = async (req, res) => {
             importedSongs.push(newSong);
             console.log(`✅ Success: ${track.songTitle}`);
 
-            // ⚡ THE SPAM PREVENTER: Mimic human behavior to avoid 429 Bans
             console.log(`⏳ Anti-Bot Delay: Waiting 3 seconds before next track...`);
             await new Promise(r => setTimeout(r, 3000));
 
