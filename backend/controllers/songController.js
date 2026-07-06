@@ -318,6 +318,9 @@ exports.importSongOnline = async (req, res) => {
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
     const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
+    // ⚡ THE ABSOLUTE PATH FOR COOKIES
+    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
+
     try {
         await youtubedl(cleanUrl, {
             f: 'bestaudio', 
@@ -326,7 +329,8 @@ exports.importSongOnline = async (req, res) => {
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            cookies: 'cookies.txt' // ⚡ Bypasses YouTube Bot Blocks
+            cookies: cookiePath, // ⚡ Forced Absolute Path
+            extractorArgs: 'youtube:player_client=android' // ⚡ Secret weapon
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -405,6 +409,9 @@ exports.importAlbumOnline = async (req, res) => {
 
     let importedSongs = [];
 
+    // ⚡ THE ABSOLUTE PATH FOR COOKIES
+    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
+
     for (const track of tracks) {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
         try {
@@ -447,7 +454,8 @@ exports.importAlbumOnline = async (req, res) => {
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
-                    cookies: 'cookies.txt' // ⚡ Bypasses YouTube Bot Blocks
+                    cookies: cookiePath, // ⚡ Forced Absolute Path
+                    extractorArgs: 'youtube:player_client=android' // ⚡ Secret weapon
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
