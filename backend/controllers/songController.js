@@ -301,7 +301,6 @@ exports.importSongOnline = async (req, res) => {
     console.log(`🔍 Searching YouTube for official audio...`);
     const primaryArtist = itunesData.artistName.split(',')[0].split('&')[0].trim();
     
-    // ⚡ STRICTLY FETCH OFFICIAL AUDIO
     const ytResults = await play.search(`${itunesData.songTitle} ${primaryArtist} official audio`, { 
         limit: 1, 
         source: { youtube: "video" } 
@@ -317,17 +316,17 @@ exports.importSongOnline = async (req, res) => {
     const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
     const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
+    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'bestaudio', 
+            f: 'bestaudio/best', // ⚡ Fixes "Requested format is not available"
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            extractorArgs: 'youtube:player_client=ios', // ⚡ Defeat DRM encryption
-            geoBypass: true // ⚡ Defeat Geographic blocks
+            cookies: cookiePath // ⚡ The absolute requirement for Render
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -405,6 +404,13 @@ exports.importAlbumOnline = async (req, res) => {
     const coverUrl = coverResult.secure_url;
 
     let importedSongs = [];
+    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
+
+    if (!fs.existsSync(cookiePath)) {
+        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
+    } else {
+        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
+    }
 
     for (const track of tracks) {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
@@ -422,7 +428,6 @@ exports.importAlbumOnline = async (req, res) => {
 
             const primaryArtist = track.artistName.split(',')[0].split('&')[0].trim();
             
-            // ⚡ STRICTLY FETCH OFFICIAL AUDIO
             const ytResults = await play.search(`${track.songTitle} ${primaryArtist} official audio`, { 
                 limit: 1, 
                 source: { youtube: "video" } 
@@ -443,14 +448,13 @@ exports.importAlbumOnline = async (req, res) => {
 
             try {
                 await youtubedl(cleanUrl, { 
-                    f: 'bestaudio', 
+                    f: 'bestaudio/best', // ⚡ Fixes "Requested format is not available"
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
-                    extractorArgs: 'youtube:player_client=ios', // ⚡ Defeat DRM encryption natively
-                    geoBypass: true // ⚡ Defeat Geographic blocks natively
+                    cookies: cookiePath
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
@@ -488,6 +492,11 @@ exports.importAlbumOnline = async (req, res) => {
             
             importedSongs.push(newSong);
             console.log(`✅ Success: ${track.songTitle}`);
+
+            // ⚡ THE SPAM PREVENTER: Mimic human behavior to avoid 429 Bans
+            console.log(`⏳ Anti-Bot Delay: Waiting 3 seconds before next track...`);
+            await new Promise(r => setTimeout(r, 3000));
+
         } catch (trackErr) {
             console.error(`❌ Failed on ${track.songTitle}:`, trackErr.message || trackErr);
         }
