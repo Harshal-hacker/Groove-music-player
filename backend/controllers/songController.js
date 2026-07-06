@@ -4,10 +4,7 @@ const User = require('../models/User');
 const Artist = require('../models/Artist'); 
 const Album = require('../models/Album'); 
 const cloudinary = require('cloudinary').v2; 
-const logger = require('../utils/logger');
 const fs = require('fs'); 
-const os = require('os'); 
-const path = require('path');
 
 const { searchItunesTrack, searchItunesAlbumTracks } = require('../utils/itunesHelper');
 const { extractLocalMetadata } = require('../utils/metadataHelper');
@@ -43,19 +40,39 @@ const getArtistIds = async (artistNames) => {
     return ids;
 };
 
+// ⚡ DIRECT PIPELINE: ZERO DISK USAGE & OOM PREVENTION
+const streamToCloudinary = (youtubeUrl) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Grabs the highest quality official audio stream natively
+      const ytStream = await play.stream(youtubeUrl);
+      if (!ytStream || !ytStream.stream) throw new Error("Could not extract official audio stream.");
+
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: "video", folder: "groove_music" },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result.secure_url);
+        }
+      );
+      
+      ytStream.stream.pipe(uploadStream);
+      ytStream.stream.on('error', (err) => reject(err));
+      
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 // ==========================================
 // 1. BULK UPLOAD SONG (ID3 -> iTunes -> DB)
 // ==========================================
 exports.uploadSong = async (req, res) => {
   try {
     const { title, artist, album, duration, category } = req.body;
-    
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: "Access Denied: Admin only." });
-    }
-    if (!req.files || !req.files['audio']) {
-      return res.status(400).json({ message: "Audio file is required." });
-    }
+    if (req.user.role !== 'admin') return res.status(403).json({ message: "Admin only." });
+    if (!req.files || !req.files['audio']) return res.status(400).json({ message: "Audio file is required." });
 
     let searchTitle = title ? title.trim() : "";
     let searchArtist = artist ? artist.trim() : "";
@@ -63,9 +80,7 @@ exports.uploadSong = async (req, res) => {
     let fallbackBase64Cover = null;
 
     if (!searchTitle) {
-        console.log("📂 Automated upload detected. Extracting ID3 tags from file...");
         const localData = await extractLocalMetadata(req.files['audio'][0].path);
-        
         if (localData && localData.title) {
             searchTitle = localData.title;
             searchArtist = localData.artist || "Unknown Artist";
@@ -107,21 +122,14 @@ exports.uploadSong = async (req, res) => {
         if (fallbackBase64Cover) enrichedData.coverArt = fallbackBase64Cover;
     }
 
-    const audioResult = await cloudinary.uploader.upload(req.files['audio'][0].path, { 
-      resource_type: "video", 
-      folder: "groove_music" 
-    });
+    const audioResult = await cloudinary.uploader.upload(req.files['audio'][0].path, { resource_type: "video", folder: "groove_music" });
     const audioUrl = audioResult.secure_url;
     
     if (req.files['cover']) {
-       const coverResult = await cloudinary.uploader.upload(req.files['cover'][0].path, { 
-         resource_type: "image", folder: "groove_images" 
-       });
+       const coverResult = await cloudinary.uploader.upload(req.files['cover'][0].path, { resource_type: "image", folder: "groove_images" });
        enrichedData.coverArt = coverResult.secure_url;
     } else if (enrichedData.coverArt && enrichedData.coverArt.startsWith('data:image')) {
-       const coverResult = await cloudinary.uploader.upload(enrichedData.coverArt, {
-         resource_type: "image", folder: "groove_images"
-       });
+       const coverResult = await cloudinary.uploader.upload(enrichedData.coverArt, { resource_type: "image", folder: "groove_images" });
        enrichedData.coverArt = coverResult.secure_url;
     }
 
@@ -135,12 +143,7 @@ exports.uploadSong = async (req, res) => {
     );
 
     const newSong = new Song({
-      title: enrichedData.title,
-      artists: artistIds,
-      albumId: albumDoc._id,
-      category: category || "All", 
-      duration: enrichedData.duration, 
-      audioUrl: audioUrl
+      title: enrichedData.title, artists: artistIds, albumId: albumDoc._id, category: category || "All", duration: enrichedData.duration, audioUrl: audioUrl
     });
     
     await newSong.save();
@@ -165,9 +168,7 @@ exports.getAllSongs = async (req, res) => {
   try {
     const allSongs = await Song.find().populate('artists').populate('albumId');
     res.json(allSongs);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch songs" });
-  }
+  } catch (error) { res.status(500).json({ error: "Failed to fetch songs" }); }
 };
 
 exports.searchSongs = async (req, res) => {
@@ -175,16 +176,9 @@ exports.searchSongs = async (req, res) => {
     const { q } = req.query; 
     const matchingArtists = await Artist.find({ name: { $regex: q, $options: 'i' } }).select('_id');
     const artistIds = matchingArtists.map(a => a._id);
-    const songs = await Song.find({ 
-      $or: [
-        { title: { $regex: q, $options: 'i' } },
-        { artists: { $in: artistIds } }
-      ]
-    }).populate('artists').populate('albumId');
+    const songs = await Song.find({ $or: [{ title: { $regex: q, $options: 'i' } }, { artists: { $in: artistIds } }] }).populate('artists').populate('albumId');
     res.json(songs);
-  } catch (err) {
-    res.status(500).json({ message: "Search failed" });
-  }
+  } catch (err) { res.status(500).json({ message: "Search failed" }); }
 };
 
 exports.checkDuplicate = async (req, res) => {
@@ -194,27 +188,16 @@ exports.checkDuplicate = async (req, res) => {
     const safeArtist = escapeRegex(artist.trim());
     const artistDoc = await Artist.findOne({ name: { $regex: new RegExp(`^${safeArtist}$`, 'i') } });
     if (!artistDoc) return res.status(200).json({ isDuplicate: false });
-    const existingSong = await Song.findOne({ 
-      title: { $regex: new RegExp(`^${escapeRegex(title.trim())}$`, 'i') }, 
-      artists: artistDoc._id 
-    });
+    const existingSong = await Song.findOne({ title: { $regex: new RegExp(`^${escapeRegex(title.trim())}$`, 'i') }, artists: artistDoc._id });
     res.status(200).json({ isDuplicate: !!existingSong });
-  } catch (error) {
-    res.status(500).json({ error: "Server error during check." });
-  }
+  } catch (error) { res.status(500).json({ error: "Server error during check." }); }
 };
 
 exports.updateSongDuration = async (req, res) => {
   try {
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id, 
-      { duration: req.body.duration }, 
-      { returnDocument: 'after' }
-    ).populate('artists').populate('albumId');
+    const updatedSong = await Song.findByIdAndUpdate(req.params.id, { duration: req.body.duration }, { returnDocument: 'after' }).populate('artists').populate('albumId');
     res.json(updatedSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
 exports.updateSong = async (req, res) => {
@@ -225,9 +208,7 @@ exports.updateSong = async (req, res) => {
     const song = await Song.findById(req.params.id);
     if (!song) return res.status(404).json({ message: "Song not found" });
 
-    if (artist) { 
-       updateData.artists = await getArtistIds(splitArtists(artist.trim()));
-    }
+    if (artist) updateData.artists = await getArtistIds(splitArtists(artist.trim()));
 
     if (req.files && req.files['audio']) {
       if (song.audioUrl && song.audioUrl.includes('cloudinary')) {
@@ -239,12 +220,9 @@ exports.updateSong = async (req, res) => {
       fs.unlinkSync(req.files['audio'][0].path);
     }
 
-    const updatedSong = await Song.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' })
-    .populate('artists').populate('albumId');
+    const updatedSong = await Song.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' }).populate('artists').populate('albumId');
     res.status(200).json(updatedSong);
-  } catch (error) {
-    res.status(500).json({ message: "Server error during update", error: error.message });
-  }
+  } catch (error) { res.status(500).json({ message: "Server error during update", error: error.message }); }
 };
 
 exports.deleteSong = async (req, res) => {
@@ -261,9 +239,7 @@ exports.deleteSong = async (req, res) => {
     await User.updateMany({ likedSongs: req.params.id }, { $pull: { likedSongs: req.params.id } });
     await Song.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
 // ==========================================
@@ -272,81 +248,50 @@ exports.deleteSong = async (req, res) => {
 exports.importSongOnline = async (req, res) => {
   try {
     const { searchQuery, category } = req.body; 
-    
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: "Admin only." });
-    }
-    if (!searchQuery) {
-      return res.status(400).json({ message: "Please provide a search term." });
-    }
+    if (req.user.role !== 'admin') return res.status(403).json({ message: "Admin only." });
+    if (!searchQuery) return res.status(400).json({ message: "Please provide a search term." });
 
     console.log(`🌐 Initiating Direct Import for: "${searchQuery}"`);
-
     const itunesData = await searchItunesTrack(searchQuery, "");
-    if (!itunesData) {
-        return res.status(404).json({ message: "Could not find official metadata." });
-    }
+    if (!itunesData) return res.status(404).json({ message: "Could not find official metadata." });
 
     const artistIds = await getArtistIds(splitArtists(itunesData.artistName));
-    const existingSong = await Song.findOne({ 
-      title: { $regex: new RegExp(`^${escapeRegex(itunesData.songTitle.trim())}$`, 'i') }, 
-      artists: { $in: artistIds } 
-    });
-
+    const existingSong = await Song.findOne({ title: { $regex: new RegExp(`^${escapeRegex(itunesData.songTitle.trim())}$`, 'i') }, artists: { $in: artistIds } });
     if (existingSong) {
         console.log(`⏭️ Skipping: "${itunesData.songTitle}" already exists in your library.`);
         return res.status(200).json(existingSong); 
     }
 
-    console.log(`🔍 Searching YouTube for audio...`);
+    console.log(`🔍 Searching YouTube for official audio...`);
     const primaryArtist = itunesData.artistName.split(',')[0].split('&')[0].trim();
     
-    const ytResults = await play.search(`${itunesData.songTitle} ${primaryArtist} audio`, { 
-        limit: 1, 
-        source: { youtube: "video" } 
+    // ⚡ STRICTLY FETCH OFFICIAL AUDIO
+    const ytResults = await play.search(`${itunesData.songTitle} ${primaryArtist} official audio`, { 
+        limit: 1, source: { youtube: "video" } 
     });
     
     if (!ytResults || ytResults.length === 0 || !ytResults[0].url) {
-        return res.status(404).json({ message: "Could not find a valid video on YouTube." });
+        return res.status(404).json({ message: "Could not find a valid official video on YouTube." });
     }
     
     const cleanUrl = ytResults[0].url.split('&')[0];
-    console.log(`✅ YouTube Audio located at ${cleanUrl}! Bypassing bot checks with pure Node.js...`);
+    console.log(`✅ Located official source at ${cleanUrl}! Streaming direct to Cloudinary...`);
 
-    const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
-    if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
-    const targetFile = path.join(uniqueDir, 'audio.webm'); // Explicit file name
-
+    let audioUrl = "";
     try {
-        // ⚡ THE PURE NODE.JS BYPASS (NO yt-dlp, NO COOKIES REQUIRED)
-        const streamInfo = await play.stream(cleanUrl);
-        await new Promise((resolve, reject) => {
-            const writeStream = fs.createWriteStream(targetFile);
-            streamInfo.stream.pipe(writeStream);
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
-            streamInfo.stream.on('error', reject);
-        });
+        audioUrl = await streamToCloudinary(cleanUrl);
     } catch (downloadErr) {
         console.error("❌ Audio extraction failed:", downloadErr.message);
         throw downloadErr;
     }
     
-    console.log(`✅ Audio successfully saved to server!`);
+    console.log(`✅ Audio successfully saved to Cloudinary!`);
 
-    console.log("☁️ Uploading audio to Cloudinary...");
-    const audioResult = await cloudinary.uploader.upload(targetFile, { 
-      resource_type: "video", folder: "groove_music" 
-    });
-    
     console.log("☁️ Uploading cover art to Cloudinary...");
-    const coverResult = await cloudinary.uploader.upload(itunesData.coverArt, {
-      resource_type: "image", folder: "groove_images"
-    });
+    const coverResult = await cloudinary.uploader.upload(itunesData.coverArt, { resource_type: "image", folder: "groove_images" });
 
     console.log("💾 Saving organized data to MongoDB...");
     const safeAlbum = escapeRegex(itunesData.albumTitle);
-    
     const albumDoc = await Album.findOneAndUpdate(
       { title: { $regex: new RegExp(`^${safeAlbum}$`, 'i') } },
       { $setOnInsert: { title: itunesData.albumTitle, artists: [artistIds[0]], coverArt: coverResult.secure_url } },
@@ -354,19 +299,11 @@ exports.importSongOnline = async (req, res) => {
     );
 
     const newSong = new Song({
-      title: itunesData.songTitle,
-      artists: artistIds,
-      albumId: albumDoc._id,
-      category: category || "All", 
-      duration: itunesData.duration, 
-      audioUrl: audioResult.secure_url
+      title: itunesData.songTitle, artists: artistIds, albumId: albumDoc._id, category: category || "All", duration: itunesData.duration, audioUrl: audioUrl
     });
     
     await newSong.save();
     const populatedSong = await Song.findById(newSong._id).populate('artists').populate('albumId');
-
-    if (fs.existsSync(targetFile)) fs.unlinkSync(targetFile);
-    if (fs.existsSync(uniqueDir)) fs.rmdirSync(uniqueDir);
 
     console.log("🎉 Direct Import Complete!");
     res.status(201).json(populatedSong);
@@ -387,12 +324,10 @@ exports.importAlbumOnline = async (req, res) => {
     if (!searchQuery) return res.status(400).json({ message: "Please provide a search term." });
 
     console.log(`💿 Initiating Album/Movie Import for: "${searchQuery}"`);
-
     const tracks = await searchItunesAlbumTracks(searchQuery);
     if (!tracks || tracks.length === 0) return res.status(404).json({ message: "Could not find album metadata." });
 
     console.log(`✅ Found Album with ${tracks.length} tracks. Starting mass download...`);
-
     console.log("☁️ Uploading Master Album cover art to Cloudinary...");
     const coverResult = await cloudinary.uploader.upload(tracks[0].coverArt, { resource_type: "image", folder: "groove_images" });
     const coverUrl = coverResult.secure_url;
@@ -403,10 +338,7 @@ exports.importAlbumOnline = async (req, res) => {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
         try {
             const artistIds = await getArtistIds(splitArtists(track.artistName));
-            const existingSong = await Song.findOne({ 
-                title: { $regex: new RegExp(`^${escapeRegex(track.songTitle.trim())}$`, 'i') }, 
-                artists: { $in: artistIds } 
-            });
+            const existingSong = await Song.findOne({ title: { $regex: new RegExp(`^${escapeRegex(track.songTitle.trim())}$`, 'i') }, artists: { $in: artistIds } });
 
             if (existingSong) {
                 console.log(`⏭️ Skipping ${track.songTitle} - Already exists in database.`);
@@ -415,40 +347,26 @@ exports.importAlbumOnline = async (req, res) => {
 
             const primaryArtist = track.artistName.split(',')[0].split('&')[0].trim();
             
-            const ytResults = await play.search(`${track.songTitle} ${primaryArtist} audio`, { 
-                limit: 1, 
-                source: { youtube: "video" } 
+            // ⚡ STRICTLY FETCH OFFICIAL AUDIO
+            const ytResults = await play.search(`${track.songTitle} ${primaryArtist} official audio`, { 
+                limit: 1, source: { youtube: "video" } 
             });
             
             if (!ytResults || ytResults.length === 0 || !ytResults[0].url) {
-                console.log(`⚠️ Skipping ${track.songTitle} - Could not find a valid video URL.`);
+                console.log(`⚠️ Skipping ${track.songTitle} - Could not find a valid official video URL.`);
                 continue;
             }
 
             const cleanUrl = ytResults[0].url.split('&')[0];
-            console.log(`🔗 Found stream source: ${cleanUrl}`);
+            console.log(`🔗 Found official stream source: ${cleanUrl}`);
 
-            const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
-            if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
-            
-            const targetFile = path.join(uniqueDir, 'audio.webm');
-
+            let audioUrl = "";
             try {
-                // ⚡ THE PURE NODE.JS BYPASS (NO yt-dlp, NO COOKIES REQUIRED)
-                const streamInfo = await play.stream(cleanUrl);
-                await new Promise((resolve, reject) => {
-                    const writeStream = fs.createWriteStream(targetFile);
-                    streamInfo.stream.pipe(writeStream);
-                    writeStream.on('finish', resolve);
-                    writeStream.on('error', reject);
-                    streamInfo.stream.on('error', reject);
-                });
+                audioUrl = await streamToCloudinary(cleanUrl);
             } catch (downloadErr) {
                 console.error(`❌ Audio extraction failed for ${track.songTitle}:`, downloadErr.message);
                 throw downloadErr;
             }
-            
-            const audioResult = await cloudinary.uploader.upload(targetFile, { resource_type: "video", folder: "groove_music" });
             
             const albumDoc = await Album.findOneAndUpdate(
               { title: { $regex: new RegExp(`^${escapeRegex(track.albumTitle)}$`, 'i') } },
@@ -457,21 +375,13 @@ exports.importAlbumOnline = async (req, res) => {
             );
 
             const newSong = new Song({
-              title: track.songTitle,
-              artists: artistIds,
-              albumId: albumDoc._id,
-              category: category || "All", 
-              duration: track.duration, 
-              audioUrl: audioResult.secure_url
+              title: track.songTitle, artists: artistIds, albumId: albumDoc._id, category: category || "All", duration: track.duration, audioUrl: audioUrl
             });
             
             await newSong.save();
-            
-            if (fs.existsSync(targetFile)) fs.unlinkSync(targetFile);
-            if (fs.existsSync(uniqueDir)) fs.rmdirSync(uniqueDir);
-            
             importedSongs.push(newSong);
             console.log(`✅ Success: ${track.songTitle}`);
+            
         } catch (trackErr) {
             console.error(`❌ Failed on ${track.songTitle}:`, trackErr.message || trackErr);
         }
