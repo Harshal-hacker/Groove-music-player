@@ -18,26 +18,31 @@ const playlistRoutes = require('./routes/playlistRoutes');
 const albumRoutes = require('./routes/albumRoutes');
 
 const app = express();
-const server = http.createServer(app); // ⚡ 2. Wrap Express with HTTP Server
+const server = http.createServer(app);
 
-// ⚡ 2. Initialize WebSockets & allow cross-origin connections
+// ⚡ THE MASTER WHITELIST
+const allowedOrigins = [
+  'http://localhost:5173', 
+  'http://localhost:5174',
+  'https://groove-music-player-rho.vercel.app' // No trailing slash!
+];
+
+// ⚡ 1. Apply to Socket.io
 const io = new Server(server, {
   cors: {
-    origin: "*", 
-    methods: ["GET", "POST", "PATCH", "DELETE"]
+    origin: allowedOrigins, 
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true
   }
 });
 
-// ⚡ 2. Make 'io' accessible inside your controllers
 app.set('io', io); 
 
-// ⚡ 2. Listen for Live WebSocket Connections
 io.on('connection', (socket) => {
   console.log('🟢 A device connected:', socket.id);
 
-  // When a user opens the app, they join a private room using their User ID
   socket.on('joinRoom', (userId) => {
-    socket.join(userId.toString()); // Force string to prevent room mismatches
+    socket.join(userId.toString());
     console.log(`🔒 User ${userId} joined their secure room`);
   });
 
@@ -46,12 +51,9 @@ io.on('connection', (socket) => {
   });
 });
 
+// ⚡ 2. Apply to Express
 const corsOptions = {
-  origin: [
-    'http://localhost:5173', 
-    'http://localhost:5174',
-    'https://groove-music-player-rho.vercel.app' // ⚡ YOUR LIVE VERCEL APP
-  ],
+  origin: allowedOrigins, 
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -60,7 +62,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
-app.use(cookieParser()); 
+app.use(cookieParser());
 
 const PORT = process.env.PORT || 5000;
 
