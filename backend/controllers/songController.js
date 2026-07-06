@@ -320,13 +320,15 @@ exports.importSongOnline = async (req, res) => {
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'bestaudio/best', // ⚡ Fixes "Requested format is not available"
+            f: 'bestaudio', // ⚡ Simplified from bestaudio/best to just bestaudio
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            cookies: cookiePath // ⚡ The absolute requirement for Render
+            cookies: cookiePath,
+            forceIpv4: true,      // ⚡ Helps bypass routing blocks
+            noCacheDir: true      // ⚡ Prevents old/corrupt metadata crashes
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -447,14 +449,16 @@ exports.importAlbumOnline = async (req, res) => {
             const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
             try {
-                await youtubedl(cleanUrl, { 
-                    f: 'bestaudio/best', // ⚡ Fixes "Requested format is not available"
+                await youtubedl(cleanUrl, {
+                    f: 'bestaudio', // ⚡ Simplified from bestaudio/best to just bestaudio
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
-                    noCheckCertificates: true,
+                    noCheckCertificates: true, 
                     noWarnings: true,
-                    cookies: cookiePath
+                    cookies: cookiePath,
+                    forceIpv4: true,      // ⚡ Helps bypass routing blocks
+                    noCacheDir: true      // ⚡ Prevents old/corrupt metadata crashes
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
