@@ -47,9 +47,14 @@ io.on('connection', (socket) => {
 });
 
 const corsOptions = {
-  origin: true, 
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true, 
+  origin: [
+    'http://localhost:5173', 
+    'http://localhost:5174',
+    'https://groove-music-player-rho.vercel.app' // ⚡ YOUR LIVE VERCEL APP
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 
 app.use(cors(corsOptions));
