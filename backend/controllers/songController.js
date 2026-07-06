@@ -1,5 +1,4 @@
 const play = require('play-dl');
-const youtubedl = require('youtube-dl-exec');
 const Song = require('../models/Song'); 
 const User = require('../models/User'); 
 const Artist = require('../models/Artist'); 
@@ -312,41 +311,27 @@ exports.importSongOnline = async (req, res) => {
     }
     
     const cleanUrl = ytResults[0].url.split('&')[0];
-    console.log(`✅ YouTube Audio located at ${cleanUrl}! Downloading securely...`);
+    console.log(`✅ YouTube Audio located at ${cleanUrl}! Bypassing bot checks with pure Node.js...`);
 
     const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
-    const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
-
-    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
-    
-    // ⚡ RADAR CHECK: DOES THE FILE EXIST?
-    if (!fs.existsSync(cookiePath)) {
-        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
-    } else {
-        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
-    }
+    const targetFile = path.join(uniqueDir, 'audio.webm'); // Explicit file name
 
     try {
-        await youtubedl(cleanUrl, {
-            f: 'bestaudio', 
-            o: dynamicOutputTemplate,
-            noPlaylist: true,
-            playlistItems: '1',
-            noCheckCertificates: true, 
-            noWarnings: true,
-            cookies: cookiePath 
+        // ⚡ THE PURE NODE.JS BYPASS (NO yt-dlp, NO COOKIES REQUIRED)
+        const streamInfo = await play.stream(cleanUrl);
+        await new Promise((resolve, reject) => {
+            const writeStream = fs.createWriteStream(targetFile);
+            streamInfo.stream.pipe(writeStream);
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+            streamInfo.stream.on('error', reject);
         });
     } catch (downloadErr) {
-        if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
-            console.error("❌ Failsafe triggered: Audio file was not created.");
-            throw downloadErr;
-        }
-        console.log("⚠️ yt-dlp threw a warning, but the file downloaded successfully. Proceeding...");
+        console.error("❌ Audio extraction failed:", downloadErr.message);
+        throw downloadErr;
     }
     
-    const downloadedFiles = fs.readdirSync(uniqueDir);
-    const targetFile = path.join(uniqueDir, downloadedFiles[0]);
     console.log(`✅ Audio successfully saved to server!`);
 
     console.log("☁️ Uploading audio to Cloudinary...");
@@ -413,14 +398,6 @@ exports.importAlbumOnline = async (req, res) => {
     const coverUrl = coverResult.secure_url;
 
     let importedSongs = [];
-    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
-
-    // ⚡ RADAR CHECK: DOES THE FILE EXIST?
-    if (!fs.existsSync(cookiePath)) {
-        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
-    } else {
-        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
-    }
 
     for (const track of tracks) {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
@@ -454,29 +431,22 @@ exports.importAlbumOnline = async (req, res) => {
             const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
             if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
             
-            const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
+            const targetFile = path.join(uniqueDir, 'audio.webm');
 
             try {
-                await youtubedl(cleanUrl, { 
-                    f: 'bestaudio', 
-                    o: dynamicOutputTemplate,
-                    noPlaylist: true,
-                    playlistItems: '1',
-                    noCheckCertificates: true,
-                    noWarnings: true,
-                    cookies: cookiePath 
+                // ⚡ THE PURE NODE.JS BYPASS (NO yt-dlp, NO COOKIES REQUIRED)
+                const streamInfo = await play.stream(cleanUrl);
+                await new Promise((resolve, reject) => {
+                    const writeStream = fs.createWriteStream(targetFile);
+                    streamInfo.stream.pipe(writeStream);
+                    writeStream.on('finish', resolve);
+                    writeStream.on('error', reject);
+                    streamInfo.stream.on('error', reject);
                 });
             } catch (downloadErr) {
-                const checkFiles = fs.readdirSync(uniqueDir);
-                if (checkFiles.length === 0) {
-                    console.error(`❌ Failsafe triggered: Audio file for ${track.songTitle} was not created.`);
-                    throw downloadErr;
-                }
-                console.log("⚠️ yt-dlp threw a warning, but the file downloaded successfully. Proceeding...");
+                console.error(`❌ Audio extraction failed for ${track.songTitle}:`, downloadErr.message);
+                throw downloadErr;
             }
-            
-            const downloadedFiles = fs.readdirSync(uniqueDir);
-            const targetFile = path.join(uniqueDir, downloadedFiles[0]);
             
             const audioResult = await cloudinary.uploader.upload(targetFile, { resource_type: "video", folder: "groove_music" });
             
