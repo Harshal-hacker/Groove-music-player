@@ -318,7 +318,6 @@ exports.importSongOnline = async (req, res) => {
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
     const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
-    // ⚡ THE ABSOLUTE PATH FOR COOKIES
     const cookiePath = path.join(__dirname, '..', 'cookies.txt');
 
     try {
@@ -329,8 +328,7 @@ exports.importSongOnline = async (req, res) => {
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            cookies: cookiePath, // ⚡ Forced Absolute Path
-            extractorArgs: 'youtube:player_client=android' // ⚡ Secret weapon
+            cookies: cookiePath // ⚡ Relying strictly on your valid cookie file!
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -408,8 +406,6 @@ exports.importAlbumOnline = async (req, res) => {
     const coverUrl = coverResult.secure_url;
 
     let importedSongs = [];
-
-    // ⚡ THE ABSOLUTE PATH FOR COOKIES
     const cookiePath = path.join(__dirname, '..', 'cookies.txt');
 
     for (const track of tracks) {
@@ -454,8 +450,7 @@ exports.importAlbumOnline = async (req, res) => {
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
-                    cookies: cookiePath, // ⚡ Forced Absolute Path
-                    extractorArgs: 'youtube:player_client=android' // ⚡ Secret weapon
+                    cookies: cookiePath // ⚡ Relying strictly on your valid cookie file!
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
