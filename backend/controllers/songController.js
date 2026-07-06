@@ -18,6 +18,19 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+// ⚡ THE AUTO-RETRY SHIELD FOR CLOUDINARY NETWORK DROPS
+const uploadWithRetry = async (filePath, options, retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await cloudinary.uploader.upload(filePath, options);
+        } catch (err) {
+            if (i === retries - 1) throw err;
+            console.log(`⚠️ Network drop detected during upload. Retrying (Attempt ${i + 1}/${retries})...`);
+            await new Promise(r => setTimeout(r, 3000)); 
+        }
+    }
+};
+
 const escapeRegex = (string) => { 
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 };
@@ -107,20 +120,20 @@ exports.uploadSong = async (req, res) => {
         if (fallbackBase64Cover) enrichedData.coverArt = fallbackBase64Cover;
     }
 
-    const audioResult = await cloudinary.uploader.upload(req.files['audio'][0].path, { 
+    const audioResult = await uploadWithRetry(req.files['audio'][0].path, { 
       resource_type: "video", 
       folder: "groove_music",
-      timeout: 120000 // ⚡ Prevent Cloudinary 499 Error
+      timeout: 120000
     });
     const audioUrl = audioResult.secure_url;
     
     if (req.files['cover']) {
-       const coverResult = await cloudinary.uploader.upload(req.files['cover'][0].path, { 
+       const coverResult = await uploadWithRetry(req.files['cover'][0].path, { 
          resource_type: "image", folder: "groove_images", timeout: 120000
        });
        enrichedData.coverArt = coverResult.secure_url;
     } else if (enrichedData.coverArt && enrichedData.coverArt.startsWith('data:image')) {
-       const coverResult = await cloudinary.uploader.upload(enrichedData.coverArt, {
+       const coverResult = await uploadWithRetry(enrichedData.coverArt, {
          resource_type: "image", folder: "groove_images", timeout: 120000
        });
        enrichedData.coverArt = coverResult.secure_url;
@@ -235,7 +248,7 @@ exports.updateSong = async (req, res) => {
         const oldPublicId = song.audioUrl.split('/').pop().split('.')[0];
         await cloudinary.uploader.destroy(`groove_music/${oldPublicId}`, { resource_type: 'video' });
       }
-      const newUpload = await cloudinary.uploader.upload(req.files['audio'][0].path, { 
+      const newUpload = await uploadWithRetry(req.files['audio'][0].path, { 
           resource_type: "video", folder: "groove_music", timeout: 120000 
       });
       updateData.audioUrl = newUpload.secure_url;
@@ -301,20 +314,28 @@ exports.importSongOnline = async (req, res) => {
         return res.status(200).json(existingSong); 
     }
 
-    console.log(`🔍 Searching YouTube for official audio...`);
     const primaryArtist = itunesData.artistName.split(',')[0].split('&')[0].trim();
+    const cleanTitle = itunesData.songTitle.replace(/ *\([^)]*\) */g, "").replace(/ *\[[^\]]*\] */g, "").trim();
+    console.log(`🔍 Searching YouTube for: "${cleanTitle} ${primaryArtist}"...`);
     
-    const ytResults = await play.search(`${itunesData.songTitle} ${primaryArtist} official audio`, { 
-        limit: 1, 
-        source: { youtube: "video" } 
-    });
-    
-    if (!ytResults || ytResults.length === 0 || !ytResults[0].url) {
-        return res.status(404).json({ message: "Could not find a valid official video on YouTube." });
+    let cleanUrl = "";
+    try {
+        const ytResults = await play.search(`${cleanTitle} ${primaryArtist} Topic`, { 
+            limit: 1, 
+            source: { youtube: "video" } 
+        });
+        if (ytResults && ytResults.length > 0 && ytResults[0].url) {
+            cleanUrl = ytResults[0].url.split('&')[0];
+        } else {
+            throw new Error("No results found via play-dl");
+        }
+    } catch (searchErr) {
+        // ⚡ THE ULTIMATE FALLBACK: Engaging yt-dlp native search engine
+        console.log(`⚠️ play-dl parsing error, engaging yt-dlp native search fallback...`);
+        cleanUrl = `ytsearch1:${cleanTitle} ${primaryArtist} Topic`; 
     }
     
-    const cleanUrl = ytResults[0].url.split('&')[0];
-    console.log(`✅ Located official source at ${cleanUrl}! Downloading securely...`);
+    console.log(`✅ Target located: ${cleanUrl.startsWith('ytsearch') ? 'Native Search Engine' : cleanUrl}! Downloading securely...`);
 
     const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
@@ -323,13 +344,14 @@ exports.importSongOnline = async (req, res) => {
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'ba[ext=m4a]/ba', // ⚡ Force pure, lightweight audio stream (avoids ffmpeg & huge files)
+            f: 'ba[ext=m4a]/ba',
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
             cookies: cookiePath,
+            extractorArgs: 'youtube:player_client=mweb,default',
             forceIpv4: true,
             noCacheDir: true
         });
@@ -343,17 +365,22 @@ exports.importSongOnline = async (req, res) => {
     
     const downloadedFiles = fs.readdirSync(uniqueDir);
     const targetFile = path.join(uniqueDir, downloadedFiles[0]);
-    console.log(`✅ Audio successfully saved to server sandbox!`);
+
+    const stats = fs.statSync(targetFile);
+    if (stats.size === 0) {
+        throw new Error("Downloaded file is 0 bytes. YouTube blocked the stream.");
+    }
+    console.log(`✅ Audio successfully saved to server sandbox (${(stats.size / 1024 / 1024).toFixed(2)} MB)!`);
 
     console.log("☁️ Uploading audio to Cloudinary...");
-    const audioResult = await cloudinary.uploader.upload(targetFile, { 
+    const audioResult = await uploadWithRetry(targetFile, { 
       resource_type: "video", 
       folder: "groove_music",
-      timeout: 120000 // ⚡ Prevent Cloudinary 499 Timeout
+      timeout: 120000 
     });
     
     console.log("☁️ Uploading cover art to Cloudinary...");
-    const coverResult = await cloudinary.uploader.upload(itunesData.coverArt, {
+    const coverResult = await uploadWithRetry(itunesData.coverArt, {
       resource_type: "image", 
       folder: "groove_images",
       timeout: 120000
@@ -409,7 +436,7 @@ exports.importAlbumOnline = async (req, res) => {
     console.log(`✅ Found Album with ${tracks.length} tracks. Starting mass download...`);
 
     console.log("☁️ Uploading Master Album cover art to Cloudinary...");
-    const coverResult = await cloudinary.uploader.upload(tracks[0].coverArt, { 
+    const coverResult = await uploadWithRetry(tracks[0].coverArt, { 
         resource_type: "image", folder: "groove_images", timeout: 120000 
     });
     const coverUrl = coverResult.secure_url;
@@ -438,19 +465,26 @@ exports.importAlbumOnline = async (req, res) => {
             }
 
             const primaryArtist = track.artistName.split(',')[0].split('&')[0].trim();
+            const cleanTitle = track.songTitle.replace(/ *\([^)]*\) */g, "").replace(/ *\[[^\]]*\] */g, "").trim();
             
-            const ytResults = await play.search(`${track.songTitle} ${primaryArtist} official audio`, { 
-                limit: 1, 
-                source: { youtube: "video" } 
-            });
-            
-            if (!ytResults || ytResults.length === 0 || !ytResults[0].url) {
-                console.log(`⚠️ Skipping ${track.songTitle} - Could not find a valid official video URL.`);
-                continue;
+            let cleanUrl = "";
+            try {
+                const ytResults = await play.search(`${cleanTitle} ${primaryArtist} Topic`, { 
+                    limit: 1, 
+                    source: { youtube: "video" } 
+                });
+                if (ytResults && ytResults.length > 0 && ytResults[0].url) {
+                    cleanUrl = ytResults[0].url.split('&')[0];
+                } else {
+                    throw new Error("No results found via play-dl");
+                }
+            } catch (searchErr) {
+                // ⚡ THE ULTIMATE FALLBACK: Engaging yt-dlp native search engine
+                console.log(`⚠️ play-dl parsing error, engaging yt-dlp native search fallback...`);
+                cleanUrl = `ytsearch1:${cleanTitle} ${primaryArtist} Topic`;
             }
 
-            const cleanUrl = ytResults[0].url.split('&')[0];
-            console.log(`🔗 Found official stream source: ${cleanUrl}`);
+            console.log(`🔗 Target located: ${cleanUrl.startsWith('ytsearch') ? 'Native Search Engine' : cleanUrl}`);
 
             const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
             if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
@@ -459,13 +493,14 @@ exports.importAlbumOnline = async (req, res) => {
 
             try {
                 await youtubedl(cleanUrl, { 
-                    f: 'ba[ext=m4a]/ba', // ⚡ Force pure audio stream
+                    f: 'ba[ext=m4a]/ba', 
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
                     cookies: cookiePath,
+                    extractorArgs: 'youtube:player_client=mweb,default', 
                     forceIpv4: true,
                     noCacheDir: true
                 });
@@ -481,10 +516,15 @@ exports.importAlbumOnline = async (req, res) => {
             const downloadedFiles = fs.readdirSync(uniqueDir);
             const targetFile = path.join(uniqueDir, downloadedFiles[0]);
             
-            const audioResult = await cloudinary.uploader.upload(targetFile, { 
+            const stats = fs.statSync(targetFile);
+            if (stats.size === 0) {
+                throw new Error("Downloaded file is 0 bytes. YouTube blocked the stream.");
+            }
+            
+            const audioResult = await uploadWithRetry(targetFile, { 
                 resource_type: "video", 
                 folder: "groove_music",
-                timeout: 120000 // ⚡ Prevent Cloudinary 499 Timeout
+                timeout: 120000 
             });
             
             const albumDoc = await Album.findOneAndUpdate(
