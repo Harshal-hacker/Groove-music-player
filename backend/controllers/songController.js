@@ -320,15 +320,15 @@ exports.importSongOnline = async (req, res) => {
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'bestaudio', // ⚡ Simplified from bestaudio/best to just bestaudio
+            f: '22/18/ba/b', // ⚡ THE GOLDEN BYPASS: Try 720p/360p multiplexed formats before encrypted audio
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
             cookies: cookiePath,
-            forceIpv4: true,      // ⚡ Helps bypass routing blocks
-            noCacheDir: true      // ⚡ Prevents old/corrupt metadata crashes
+            forceIpv4: true,
+            noCacheDir: true
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -449,16 +449,16 @@ exports.importAlbumOnline = async (req, res) => {
             const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
             try {
-                await youtubedl(cleanUrl, {
-                    f: 'bestaudio', // ⚡ Simplified from bestaudio/best to just bestaudio
+                await youtubedl(cleanUrl, { 
+                    f: '22/18/ba/b', // ⚡ THE GOLDEN BYPASS: Try 720p/360p multiplexed formats before encrypted audio
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
-                    noCheckCertificates: true, 
+                    noCheckCertificates: true,
                     noWarnings: true,
                     cookies: cookiePath,
-                    forceIpv4: true,      // ⚡ Helps bypass routing blocks
-                    noCacheDir: true      // ⚡ Prevents old/corrupt metadata crashes
+                    forceIpv4: true,
+                    noCacheDir: true
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
