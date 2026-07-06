@@ -18,7 +18,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// ⚡ THE AUTO-RETRY SHIELD FOR CLOUDINARY NETWORK DROPS
+// ⚡ THE AUTO-RETRY SHIELD
 const uploadWithRetry = async (filePath, options, retries = 3) => {
     for (let i = 0; i < retries; i++) {
         try {
@@ -330,7 +330,6 @@ exports.importSongOnline = async (req, res) => {
             throw new Error("No results found via play-dl");
         }
     } catch (searchErr) {
-        // ⚡ THE ULTIMATE FALLBACK: Engaging yt-dlp native search engine
         console.log(`⚠️ play-dl parsing error, engaging yt-dlp native search fallback...`);
         cleanUrl = `ytsearch1:${cleanTitle} ${primaryArtist} Topic`; 
     }
@@ -344,14 +343,14 @@ exports.importSongOnline = async (req, res) => {
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'ba[ext=m4a]/ba',
+            f: 'ba[ext=m4a]/ba/b',
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
             cookies: cookiePath,
-            extractorArgs: 'youtube:player_client=mweb,default',
+            extractorArgs: 'youtube:player_client=tv,default', // ⚡ The Smart TV Disguise
             forceIpv4: true,
             noCacheDir: true
         });
@@ -479,7 +478,6 @@ exports.importAlbumOnline = async (req, res) => {
                     throw new Error("No results found via play-dl");
                 }
             } catch (searchErr) {
-                // ⚡ THE ULTIMATE FALLBACK: Engaging yt-dlp native search engine
                 console.log(`⚠️ play-dl parsing error, engaging yt-dlp native search fallback...`);
                 cleanUrl = `ytsearch1:${cleanTitle} ${primaryArtist} Topic`;
             }
@@ -493,14 +491,14 @@ exports.importAlbumOnline = async (req, res) => {
 
             try {
                 await youtubedl(cleanUrl, { 
-                    f: 'ba[ext=m4a]/ba', 
+                    f: 'ba[ext=m4a]/ba/b', 
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
                     cookies: cookiePath,
-                    extractorArgs: 'youtube:player_client=mweb,default', 
+                    extractorArgs: 'youtube:player_client=tv,default', // ⚡ The Smart TV Disguise
                     forceIpv4: true,
                     noCacheDir: true
                 });
@@ -550,8 +548,9 @@ exports.importAlbumOnline = async (req, res) => {
             importedSongs.push(newSong);
             console.log(`✅ Success: ${track.songTitle}`);
 
-            console.log(`⏳ Anti-Bot Delay: Waiting 3 seconds before next track...`);
-            await new Promise(r => setTimeout(r, 3000));
+            // ⚡ THE 10-SECOND HUMAN DELAY: Prevents Render from getting IP Banned
+            console.log(`⏳ Anti-Bot Delay: Humanizing requests, waiting 10 seconds before next track...`);
+            await new Promise(r => setTimeout(r, 10000));
 
         } catch (trackErr) {
             console.error(`❌ Failed on ${track.songTitle}:`, trackErr.message || trackErr);
