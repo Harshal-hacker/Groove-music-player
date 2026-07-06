@@ -314,30 +314,34 @@ exports.importSongOnline = async (req, res) => {
     const cleanUrl = ytResults[0].url.split('&')[0];
     console.log(`✅ YouTube Audio located at ${cleanUrl}! Downloading securely...`);
 
-    const tempFilePath = path.join(os.tmpdir(), `${Date.now()}_import.webm`); 
-    
+    const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
+    if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
+    const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
+
     try {
-        // ⚡ HEADERS REMOVED. Pure, clean download flags.
         await youtubedl(cleanUrl, {
             f: 'bestaudio', 
-            o: tempFilePath,
+            o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
-            noWarnings: true
+            noWarnings: true,
+            cookies: 'cookies.txt' // ⚡ Bypasses YouTube Bot Blocks
         });
     } catch (downloadErr) {
-        if (!fs.existsSync(tempFilePath)) {
+        if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
             console.error("❌ Failsafe triggered: Audio file was not created.");
             throw downloadErr;
         }
         console.log("⚠️ yt-dlp threw a warning, but the file downloaded successfully. Proceeding...");
     }
     
+    const downloadedFiles = fs.readdirSync(uniqueDir);
+    const targetFile = path.join(uniqueDir, downloadedFiles[0]);
     console.log(`✅ Audio successfully saved to server!`);
 
     console.log("☁️ Uploading audio to Cloudinary...");
-    const audioResult = await cloudinary.uploader.upload(tempFilePath, { 
+    const audioResult = await cloudinary.uploader.upload(targetFile, { 
       resource_type: "video", folder: "groove_music" 
     });
     
@@ -367,7 +371,9 @@ exports.importSongOnline = async (req, res) => {
     await newSong.save();
     const populatedSong = await Song.findById(newSong._id).populate('artists').populate('albumId');
 
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    if (fs.existsSync(targetFile)) fs.unlinkSync(targetFile);
+    if (fs.existsSync(uniqueDir)) fs.rmdirSync(uniqueDir);
+
     console.log("🎉 Direct Import Complete!");
     res.status(201).json(populatedSong);
 
@@ -434,14 +440,14 @@ exports.importAlbumOnline = async (req, res) => {
             const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
             try {
-                // ⚡ HEADERS REMOVED. Pure, clean download flags.
                 await youtubedl(cleanUrl, { 
                     f: 'bestaudio', 
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
                     noCheckCertificates: true,
-                    noWarnings: true
+                    noWarnings: true,
+                    cookies: 'cookies.txt' // ⚡ Bypasses YouTube Bot Blocks
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
