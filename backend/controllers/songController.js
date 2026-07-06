@@ -319,6 +319,13 @@ exports.importSongOnline = async (req, res) => {
     const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
 
     const cookiePath = path.join(__dirname, '..', 'cookies.txt');
+    
+    // ⚡ RADAR CHECK: DOES THE FILE EXIST?
+    if (!fs.existsSync(cookiePath)) {
+        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
+    } else {
+        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
+    }
 
     try {
         await youtubedl(cleanUrl, {
@@ -328,7 +335,7 @@ exports.importSongOnline = async (req, res) => {
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            cookies: cookiePath // ⚡ Relying strictly on your valid cookie file!
+            cookies: cookiePath 
         });
     } catch (downloadErr) {
         if (!fs.existsSync(uniqueDir) || fs.readdirSync(uniqueDir).length === 0) {
@@ -408,6 +415,13 @@ exports.importAlbumOnline = async (req, res) => {
     let importedSongs = [];
     const cookiePath = path.join(__dirname, '..', 'cookies.txt');
 
+    // ⚡ RADAR CHECK: DOES THE FILE EXIST?
+    if (!fs.existsSync(cookiePath)) {
+        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
+    } else {
+        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
+    }
+
     for (const track of tracks) {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
         try {
@@ -450,7 +464,7 @@ exports.importAlbumOnline = async (req, res) => {
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
-                    cookies: cookiePath // ⚡ Relying strictly on your valid cookie file!
+                    cookies: cookiePath 
                 });
             } catch (downloadErr) {
                 const checkFiles = fs.readdirSync(uniqueDir);
