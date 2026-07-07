@@ -1,5 +1,6 @@
 const play = require('play-dl');
 const youtubedl = require('youtube-dl-exec');
+const ffmpegPath = require('ffmpeg-static'); // ⚡ The Media Engine
 const Song = require('../models/Song'); 
 const User = require('../models/User'); 
 const Artist = require('../models/Artist'); 
@@ -339,18 +340,17 @@ exports.importSongOnline = async (req, res) => {
     const uniqueDir = path.join(os.tmpdir(), `groove_import_${Date.now()}_${Math.floor(Math.random() * 1000)}`);
     if (!fs.existsSync(uniqueDir)) fs.mkdirSync(uniqueDir, { recursive: true });
     const dynamicOutputTemplate = path.join(uniqueDir, '%(id)s.%(ext)s');
-    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
 
     try {
         await youtubedl(cleanUrl, {
-            f: 'ba[ext=m4a]/ba/b',
+            f: 'bestaudio', // ⚡ Let FFMPEG automatically extract the best audio
             o: dynamicOutputTemplate,
             noPlaylist: true,
             playlistItems: '1',
             noCheckCertificates: true, 
             noWarnings: true,
-            cookies: cookiePath,
-            extractorArgs: 'youtube:player_client=tv,default', // ⚡ The Smart TV Disguise
+            extractorArgs: 'youtube:player_client=android,default', // ⚡ The Anonymous Android Bypass
+            ffmpegLocation: ffmpegPath, // ⚡ The Media Engine
             forceIpv4: true,
             noCacheDir: true
         });
@@ -441,13 +441,6 @@ exports.importAlbumOnline = async (req, res) => {
     const coverUrl = coverResult.secure_url;
 
     let importedSongs = [];
-    const cookiePath = path.join(__dirname, '..', 'cookies.txt');
-
-    if (!fs.existsSync(cookiePath)) {
-        console.error(`🚨 FATAL RADAR: I cannot find your cookies.txt file at: ${cookiePath}`);
-    } else {
-        console.log(`🍪 SUCCESS: cookies.txt located successfully!`);
-    }
 
     for (const track of tracks) {
         console.log(`\n🎵 Processing: ${track.songTitle} by ${track.artistName}`);
@@ -491,14 +484,14 @@ exports.importAlbumOnline = async (req, res) => {
 
             try {
                 await youtubedl(cleanUrl, { 
-                    f: 'ba[ext=m4a]/ba/b', 
+                    f: 'bestaudio', 
                     o: dynamicOutputTemplate,
                     noPlaylist: true,
                     playlistItems: '1',
                     noCheckCertificates: true,
                     noWarnings: true,
-                    cookies: cookiePath,
-                    extractorArgs: 'youtube:player_client=tv,default', // ⚡ The Smart TV Disguise
+                    extractorArgs: 'youtube:player_client=android,default', // ⚡ The Anonymous Android Bypass
+                    ffmpegLocation: ffmpegPath, // ⚡ The Media Engine
                     forceIpv4: true,
                     noCacheDir: true
                 });
@@ -548,7 +541,6 @@ exports.importAlbumOnline = async (req, res) => {
             importedSongs.push(newSong);
             console.log(`✅ Success: ${track.songTitle}`);
 
-            // ⚡ THE 10-SECOND HUMAN DELAY: Prevents Render from getting IP Banned
             console.log(`⏳ Anti-Bot Delay: Humanizing requests, waiting 10 seconds before next track...`);
             await new Promise(r => setTimeout(r, 10000));
 
