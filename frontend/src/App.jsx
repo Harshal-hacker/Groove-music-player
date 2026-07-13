@@ -22,6 +22,7 @@ function App() {
           <Routes>
             <Route path="/" element={<MainPlayer />} />
             <Route path="/playlist/:id" element={<MainPlayer />} />
+            <Route path="/album/:id" element={<MainPlayer />} />
             <Route path="/profile" element={<MainPlayer />} />
             <Route path="/settings" element={<MainPlayer />} />
             <Route path="/login" element={<Login />} />

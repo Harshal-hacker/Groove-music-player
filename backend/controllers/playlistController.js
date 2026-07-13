@@ -4,7 +4,7 @@ const User = require('../models/User');
 const deepPopulateSongs = {
   path: 'songIds',
   populate: [
-    { path: 'artistId' },
+    { path: 'artists' },
     { path: 'albumId' }
   ]
 };

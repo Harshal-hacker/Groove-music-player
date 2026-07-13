@@ -16,6 +16,7 @@ import ContextMenu from './components/ContextMenu';
 import TopHeader from './components/TopHeader';
 import RightQueue from './components/RightQueue';
 import SearchModal from './components/SearchModal';
+import PlaylistDeck from './components/PlaylistDeck';
 
 const Admin = lazy(() => import('./Admin'));
 const Profile = lazy(() => import('./components/Profile'));
@@ -71,7 +72,6 @@ function MainPlayer() {
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
-  // ⚡ SPOTIFY LOGIC: Smart Space Hierarchy
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1100);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
@@ -82,29 +82,20 @@ function MainPlayer() {
     if (userId) {
       socket.emit('joinRoom', userId);
 
-      // (Your existing likes listener)
       socket.on('likesUpdated', (updatedLikedSongsArray) => {
         setUserData(prev => ({ ...prev, likedSongs: updatedLikedSongsArray }));
       });
 
-      // ⚡ 1. Listen for new playlists
       socket.on('playlistCreated', (newPlaylist) => {
-        console.log("🟢 Live Playlist Created!");
         setUserPlaylists(prev => [...prev, newPlaylist]);
       });
 
-      // ⚡ 2. Listen for renamed/edited playlists
       socket.on('playlistUpdated', (updatedPlaylist) => {
-        console.log("🟢 Live Playlist Updated!");
         setUserPlaylists(prev => prev.map(pl => pl._id === updatedPlaylist._id ? updatedPlaylist : pl));
       });
 
-      // ⚡ 3. Listen for deleted playlists
       socket.on('playlistDeleted', (deletedId) => {
-        console.log("🟢 Live Playlist Deleted!");
         setUserPlaylists(prev => prev.filter(pl => pl._id !== deletedId));
-        
-        // If the user is currently looking at the deleted playlist, kick them back to 'All'
         setSelectedPlaylist(currentId => currentId === deletedId ? null : currentId);
       });
     }
@@ -117,38 +108,30 @@ function MainPlayer() {
     };
   }, [currentUser]);
 
-  // 1. Unconditional Resizing Rules (Handles DevTools Opening)
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
       setWindowWidth(width);
-      
       if (width < 750) {
-        setIsSidebarCollapsed(true); // Force sidebar to icon mode
-        setIsQueueOpen(false); // Force close queue to save the middle feed
+        setIsSidebarCollapsed(true);
+        setIsQueueOpen(false);
       } else if (width < 1000) {
-        setIsSidebarCollapsed(true); // Always keep sidebar in icon mode on small screens
+        setIsSidebarCollapsed(true);
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 2. Mutual Exclusion: If you expand the Sidebar, hide the Queue (on medium screens)
   const toggleSidebar = () => {
     const willExpand = isSidebarCollapsed;
-    if (willExpand && windowWidth < 1200) {
-      setIsQueueOpen(false); 
-    }
+    if (willExpand && windowWidth < 1200) setIsQueueOpen(false); 
     setIsSidebarCollapsed(!isSidebarCollapsed);
   };
 
-  // 3. Mutual Exclusion: If you open the Queue, collapse the Sidebar (on medium screens)
   const toggleQueue = () => {
     const willOpen = !isQueueOpen;
-    if (willOpen && windowWidth < 1200) {
-      setIsSidebarCollapsed(true); 
-    }
+    if (willOpen && windowWidth < 1200) setIsSidebarCollapsed(true); 
     setIsQueueOpen(!isQueueOpen);
   };
 
@@ -163,12 +146,18 @@ function MainPlayer() {
       .then(response => response.json())
       .then(data => { setPlaylist(data); setIsLoading(false); })
       .catch(err => { console.error("Fetch error:", err); setIsLoading(false); });
-  }, []); // ✅ Empty array 
+  }, []);
 
   useEffect(() => {
-    if (id) { setSelectedPlaylist(id); setActiveCategory('All'); } 
-    else { setSelectedPlaylist(null); setActiveCategory('All'); }
-  }, [id]);
+    if (id && location.pathname.includes('/playlist')) { 
+      setSelectedPlaylist(id); 
+      setActiveCategory('All'); 
+    } else { 
+      // If we are on the Home Page OR viewing an Album, clear the selected playlist
+      setSelectedPlaylist(null); 
+      setActiveCategory('All'); 
+    }
+  }, [id, location.pathname]);
 
   useEffect(() => {
     const fetchUserLibrary = async () => {
@@ -183,12 +172,35 @@ function MainPlayer() {
     fetchUserLibrary();
   }, [isAuthenticated, currentUser]); 
 
+  // ⚡ THE FIX: The Bulletproof Audio Engine
   useEffect(() => {
     if (audioRef.current && currentTrack) {
-      if (audioRef.current.src !== currentTrack.src) audioRef.current.src = currentTrack.src;
-      if (isPlaying) audioRef.current.play().catch(e => console.error("Auto-play failed:", e));
+      
+      // 1. Grab the correct URL field (audioUrl)
+      const safeUrl = currentTrack.audioUrl || currentTrack.src;
+      if (!safeUrl) return; // Prevent NotSupportedError if URL is missing
+
+      // 2. Load the new track into the browser
+      if (audioRef.current.src !== safeUrl) {
+        audioRef.current.src = safeUrl;
+        audioRef.current.load(); // Force the browser to prep the new file
+      }
+
+      // 3. Play securely using a Catch Promise
+      if (isPlaying) {
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(e => {
+            if (e.name === 'AbortError') {
+              console.log("Track changed rapidly. Safe abort triggered.");
+            } else {
+              console.error("Auto-play blocked by browser:", e);
+            }
+          });
+        }
+      }
     }
-  }, [currentTrackIndex]);
+  }, [currentTrackIndex, currentTrack, isPlaying]); // Watch for track changes
 
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
@@ -200,10 +212,8 @@ function MainPlayer() {
     if ('mediaSession' in navigator && currentTrack) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentTrack.title, 
-        // UPDATE THIS LINE:
         artist: currentTrack.artists?.map(a => a.name).join(', ') || "Unknown Artist", 
         album: "Groove Collection",
-        // UPDATE THIS LINE:
         artwork: [{ src: currentTrack.albumId?.coverArt || '/Groove.png', sizes: '512x512', type: 'image/png' }]
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
@@ -314,6 +324,7 @@ function MainPlayer() {
     }
   }, [currentTrack, playbackContext, playlist]);
   
+  // ⚡ THE FIX: Secure Toggle Play Pause with Promise Wrap
   const togglePlayPause = () => {
     if (!audioRef.current) return;
     const audio = audioRef.current;
@@ -334,7 +345,9 @@ function MainPlayer() {
       }, stepTime);
     } else {
       audio.volume = 0;
-      audio.play().then(() => {
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
           setIsPlaying(true);
           let currentStep = 0;
           const fadeInInterval = setInterval(() => {
@@ -343,7 +356,10 @@ function MainPlayer() {
             if (newVolume >= 0 && newVolume <= 1) audio.volume = newVolume;
             if (currentStep >= steps) { clearInterval(fadeInInterval); audio.volume = targetVolume; }
           }, stepTime);
-        }).catch(e => console.log("Audio play blocked:", e));
+        }).catch(e => {
+          if (e.name !== 'AbortError') console.log("Audio play blocked:", e);
+        });
+      }
     }
   };
 
@@ -404,7 +420,7 @@ function MainPlayer() {
         const newPlaylist = await response.json();
         setUserPlaylists(prev => [...prev, newPlaylist]);
         setSelectedPlaylist(newPlaylist._id); setActiveCategory('All');
-        setTempName("New Playlist"); setIsEditingName(true); setIsPlaylistModalOpen(false); 
+        setTempName("New Playlist"); setIsEditingName(true);
         if(isSidebarCollapsed) toggleSidebar(); 
       }
     } catch (err) { console.error("Create failed:", err); }
@@ -490,9 +506,7 @@ function MainPlayer() {
     } catch (error) { setUserPlaylists(previousPlaylists); }
   };
 
-  // Find this function and update the matchesSearch line:
   const filteredPlaylist = playlist.filter((song) => {
-    // UPDATE THIS LINE:
     const matchesSearch = song.title.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
                           (song.artists?.map(a => a.name).join(', ') || "").toLowerCase().includes(debouncedQuery.toLowerCase());
     
@@ -529,22 +543,20 @@ function MainPlayer() {
           toggleSidebar={toggleSidebar} 
         />
 
-        {/* ⚡ THE MAIN FEED */}
         <AnimatePresence mode="wait">
           <motion.div key={location.pathname} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2, ease: "circOut" }} 
             style={{ flex: 1, minWidth: 0, display: 'flex', overflow: 'hidden' }} 
           >
             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Loader2 className="spinner" size={32} color="#10b981"/></div>}>
-              
-              {/* ⚡ ADMIN BLOCK DELETED HERE. Only Profile, Settings, or MainFeed remain! */}
               {location.pathname === '/profile' ? (
                 <Profile userData={userData} userPlaylists={userPlaylists} playlist={playlist} setCurrentTrackIndex={setCurrentTrackIndex} setIsPlaying={setIsPlaying} setPlaybackContext={setPlaybackContext} /> 
               ) : location.pathname === '/settings' ? (
                 <Settings handleLogout={handleLogout} /> 
+              ) : (location.pathname.includes('/album') || activeCategory !== 'All' || selectedPlaylist || debouncedQuery.trim() !== '') ? (
+                <PlaylistDeck activeCategory={activeCategory} selectedPlaylist={selectedPlaylist} debouncedQuery={debouncedQuery} userPlaylists={userPlaylists} setUserPlaylists={setUserPlaylists} filteredPlaylist={filteredPlaylist} handleContextMenu={handleContextMenu} handleAddToPlaylist={handleAddToPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} isAdmin={isAdmin} setToast={setToast} />
               ) : (
-                <MainFeed activeCategory={activeCategory} selectedPlaylist={selectedPlaylist} setSelectedPlaylist={setSelectedPlaylist} debouncedQuery={debouncedQuery} userPlaylists={userPlaylists} setUserPlaylists={setUserPlaylists} filteredPlaylist={filteredPlaylist} readyMadePlaylists={readyMadePlaylists} handleContextMenu={handleContextMenu} handleAddToPlaylist={handleAddToPlaylist} handleRemoveFromPlaylist={handleRemoveFromPlaylist} isAdmin={isAdmin} setToast={setToast} />
+                <MainFeed readyMadePlaylists={readyMadePlaylists} currentUser={currentUser} setSelectedPlaylist={setSelectedPlaylist} />
               )}
-              
             </Suspense>
           </motion.div>
         </AnimatePresence>
